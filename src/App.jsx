@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import {
-  Trophy, Users, Home, User, ChevronRight, ChevronLeft, X, Flame,
-  Wallet, Plus, Swords, Crosshair, Skull, CheckCircle2, Coins,
-  Megaphone, Share2, LogOut, Lock, Phone, Gamepad2, UserCircle2,
-  MessageCircle, ArrowDownToLine, ArrowUpFromLine, Pencil,
-  DoorOpen, CalendarClock,
+  Flame, KeyRound, ChevronLeft, ChevronRight, X, Plus, Trash2,
+  Swords, Crosshair, Pencil, Users2, Wallet2, Settings as SettingsIcon,
+  ArrowUpFromLine, Ban, UserX, Coins, Phone, Power, User, Users,
 } from "lucide-react";
 import { db } from "./firebase";
 import {
-  doc, getDoc, setDoc, updateDoc, onSnapshot, collection, arrayUnion,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection,
 } from "firebase/firestore";
 
 const C = {
@@ -26,167 +24,36 @@ const C = {
   amberDim: "#3A2B10",
 };
 
-const WHATSAPP_LINK = "https://wa.me/923422178917";
-const MIN_DEPOSIT = 100;
+const DEFAULT_ADMIN_KEY = "Harry071";
 
-const VALID_CODES = { "FF100XK92": 100, "FF250QW14": 250, "FF500ZP77": 500 };
-const LEADERBOARD = [
-  { name: "Shadow_Blaze", kills: 214, earned: 3200 },
-  { name: "RiverX", kills: 188, earned: 2750 },
-  { name: "NoScope_Dev", kills: 176, earned: 2600 },
-  { name: "Falcon.gg", kills: 150, earned: 2100 },
-  { name: "You", kills: 42, earned: 480 },
-];
-const DEFAULT_ADS = [
-  "🔥 Weekend Squad Cup — 500 coin prize pool",
-  "Invite your squad — bonus coins for every friend who joins",
-  "New: BR Duo tournaments added every evening",
-];
-const DEFAULT_RULES = [
-  "Entry fees are deducted the moment you join a match and are not refundable.",
-  "No emulators, hacks, or teaming outside your registered squad.",
-  "Submit a screenshot of your results if asked by an organizer.",
-  "Prize coins are credited within 24 hours of a match ending.",
-  "Repeated rule violations lead to a permanent account ban.",
-];
-
-function statusOf(m, now) {
-  if (now >= m.startsAt) return "live";
-  if (m.startsAt - now < 30 * 60000) return "soon";
-  return "open";
-}
-function countdown(ms) {
-  if (ms <= 0) return "LIVE";
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m ${sec}s`;
-}
-
-function readSession() {
-  try {
-    const raw = localStorage.getItem("clutch_session");
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) { return null; }
-}
-function writeSession(v) { localStorage.setItem("clutch_session", JSON.stringify(v)); }
-function clearSession() { localStorage.removeItem("clutch_session"); }
-
-async function fetchAccount(phone) {
-  const snap = await getDoc(doc(db, "accounts", phone));
-  return snap.exists() ? snap.data() : null;
-}
-async function createAccount(phone, data) {
-  await setDoc(doc(db, "accounts", phone), data);
-}
-async function patchAccount(phone, fields) {
-  await updateDoc(doc(db, "accounts", phone), fields);
-}
-
-function StatusPill({ st }) {
-  const map = {
-    live: { bg: "#3A1620", fg: C.red, label: "LIVE", pulse: true },
-    soon: { bg: C.amberDim, fg: C.amber, label: "STARTING SOON", pulse: false },
-    open: { bg: "#12332E", fg: C.teal, label: "OPEN", pulse: false },
-  };
-  const s = map[st];
+function Field({ icon: Icon, label, ...props }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide" style={{ background: s.bg, color: s.fg }}>
-      {s.pulse && (
-        <span className="relative flex h-1.5 w-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: s.fg }} />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ background: s.fg }} />
-        </span>
-      )}
-      {s.label}
-    </span>
-  );
-}
-function CoinBadge({ coins, onAdd }) {
-  return (
-    <button onClick={onAdd} className="flex items-center gap-1.5 rounded-full pl-1 pr-2.5 py-1" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-      <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: C.amberDim }}><Coins size={11} style={{ color: C.amber }} /></span>
-      <span className="text-xs font-bold" style={{ color: C.text }}>{coins}</span>
-      <Plus size={12} style={{ color: C.dim }} />
-    </button>
-  );
-}
-function BigCard({ icon: Icon, title, sub, color, onClick }) {
-  return (
-    <button onClick={onClick} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3 active:scale-[0.98] transition-transform" style={{ background: C.surface, borderLeft: `3px solid ${color}` }}>
-      <span className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${color}22` }}><Icon size={20} style={{ color }} /></span>
-      <span className="flex-1 text-left">
-        <div className="text-[15px] font-bold" style={{ color: C.text }}>{title}</div>
-        <div className="text-xs mt-0.5" style={{ color: C.dim }}>{sub}</div>
-      </span>
-      <ChevronRight size={18} style={{ color: C.dim }} />
-    </button>
-  );
-}
-function ModeCard({ icon: Icon, title, sub, onClick }) {
-  return (
-    <button onClick={onClick} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3 active:scale-[0.98] transition-transform" style={{ background: C.surface }}>
-      <span className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: C.violetDim }}><Icon size={20} style={{ color: C.violet }} /></span>
-      <span className="flex-1 text-left">
-        <div className="text-[15px] font-bold" style={{ color: C.text }}>{title}</div>
-        <div className="text-xs mt-0.5" style={{ color: C.dim }}>{sub}</div>
-      </span>
-      <ChevronRight size={18} style={{ color: C.dim }} />
-    </button>
-  );
-}
-function MatchCard({ m, now, onOpen, joined, joinedCount }) {
-  const st = statusOf(m, now);
-  const pct = Math.round(((joinedCount || 0) / m.slots) * 100);
-  return (
-    <button onClick={() => onOpen(m)} className="w-full text-left rounded-2xl p-3.5 mb-3 flex flex-col gap-2.5" style={{ background: C.surface }}>
-      <div className="flex items-start justify-between">
-        <div className="text-[15px] font-bold leading-tight" style={{ color: C.text }}>{m.title}</div>
-        <ChevronRight size={18} style={{ color: C.dim, flexShrink: 0, marginTop: 2 }} />
+    <div className="mb-3">
+      {label && <div className="text-xs mb-1" style={{ color: C.dim }}>{label}</div>}
+      <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-3" style={{ background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
+        {Icon && <Icon size={16} style={{ color: C.dim }} />}
+        <input {...props} className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.text }} />
       </div>
-      <div className="flex items-center justify-between">
-        <StatusPill st={st} />
-        <span className="text-xs font-mono" style={{ color: C.dim }}>{st === "live" ? "in progress" : countdown(m.startsAt - now)}</span>
-      </div>
-      <div className="flex items-center gap-3 text-xs" style={{ color: C.dim }}>
-        <span className="flex items-center gap-1"><Coins size={12} style={{ color: C.amber }} /> {m.entryFee} entry</span>
-        <span className="flex items-center gap-1"><Trophy size={12} style={{ color: C.amber }} /> {m.prize} prize</span>
-        <span className="flex items-center gap-1"><Users size={12} /> {joinedCount || 0}/{m.slots}</span>
-        {joined && <span className="ml-auto font-bold" style={{ color: C.violet }}>JOINED</span>}
-      </div>
-      <div className="h-1 rounded-full overflow-hidden" style={{ background: C.border }}>
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: C.violet }} />
-      </div>
-    </button>
+    </div>
   );
 }
-function Header({ title, onBack, coins, onAdd }) {
+function TextArea({ label, ...props }) {
+  return (
+    <div className="mb-3">
+      {label && <div className="text-xs mb-1" style={{ color: C.dim }}>{label}</div>}
+      <textarea {...props} className="w-full rounded-xl px-3.5 py-3 text-sm outline-none" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }} />
+    </div>
+  );
+}
+function Header({ title, onBack, right }) {
   return (
     <div className="flex items-center justify-between px-4 pt-3 pb-2">
       <div className="flex items-center gap-2">
         {onBack && <button onClick={onBack} className="p-1.5 -ml-1.5 rounded-full" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>}
         <span className="text-lg font-black tracking-tight" style={{ color: C.text }}>{title}</span>
       </div>
-      <CoinBadge coins={coins} onAdd={onAdd} />
+      {right}
     </div>
-  );
-}
-function Field({ icon: Icon, ...props }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 mb-3" style={{ background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
-      {Icon && <Icon size={16} style={{ color: C.dim }} />}
-      <input {...props} className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.text }} />
-    </div>
-  );
-}
-function AccountRow({ icon: Icon, label, color, onClick, danger }) {
-  return (
-    <button onClick={onClick} className="w-full flex items-center gap-3 px-3.5 py-3.5" style={{ borderBottom: `1px solid ${C.border}` }}>
-      <Icon size={16} style={{ color: danger ? C.red : (color || C.dim) }} />
-      <span className="flex-1 text-left text-sm font-semibold" style={{ color: danger ? C.red : C.text }}>{label}</span>
-      <ChevronRight size={16} style={{ color: C.dim }} />
-    </button>
   );
 }
 
@@ -196,803 +63,466 @@ function Splash() {
       <style>{`
         @keyframes flamePulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: 0.85; } }
         @keyframes riseIn { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
-        @keyframes dotBlink { 0%,100% { opacity: 0.25; } 50% { opacity: 1; } }
         .flame-anim { animation: flamePulse 1.1s ease-in-out infinite; }
         .rise-anim { animation: riseIn 0.6s ease-out 0.15s both; }
-        .dot1 { animation: dotBlink 1.2s infinite 0s; }
-        .dot2 { animation: dotBlink 1.2s infinite 0.2s; }
-        .dot3 { animation: dotBlink 1.2s infinite 0.4s; }
       `}</style>
       <div className="flame-anim w-20 h-20 rounded-3xl flex items-center justify-center mb-4" style={{ background: C.violetDim }}>
         <Flame size={40} style={{ color: C.red }} />
       </div>
       <div className="rise-anim text-2xl font-black tracking-tight" style={{ color: C.text }}>CLUTCH</div>
-      <div className="rise-anim text-xs mt-1 tracking-widest uppercase" style={{ color: C.dim }}>Free Fire Tournaments</div>
-      <div className="flex items-center gap-1 mt-6">
-        <span className="dot1 w-1.5 h-1.5 rounded-full" style={{ background: C.dim }} />
-        <span className="dot2 w-1.5 h-1.5 rounded-full" style={{ background: C.dim }} />
-        <span className="dot3 w-1.5 h-1.5 rounded-full" style={{ background: C.dim }} />
+      <div className="rise-anim text-xs mt-1 tracking-widest uppercase" style={{ color: C.dim }}>Owner Panel</div>
+    </div>
+  );
+}
+
+function AdminLogin({ onSubmit, error }) {
+  const [key, setKey] = useState("");
+  return (
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center p-6" style={{ background: C.bg }}>
+      <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6" style={{ background: C.violetDim }}>
+        <Flame size={44} style={{ color: C.red }} />
+      </div>
+      <div className="w-full max-w-xs">
+        <div className="text-xs mb-1" style={{ color: C.dim }}>Admin Key</div>
+        <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 mb-3" style={{ background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
+          <KeyRound size={16} style={{ color: C.dim }} />
+          <input value={key} onChange={(e) => setKey(e.target.value)} type="password" className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.text }} />
+        </div>
+        {error && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{error}</div>}
+        <button onClick={() => onSubmit(key)} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.teal, color: "#04241C" }}>Login</button>
       </div>
     </div>
   );
 }
 
-function AuthChoice({ onPick }) {
+function MatchForm({ type, mode, editing, onCancel, onSave, onDelete }) {
+  const [title, setTitle] = useState(editing?.title || "");
+  const [mapName, setMapName] = useState(editing?.map || "");
+  const [slots, setSlots] = useState(editing?.slots?.toString() || "");
+  const [entryFee, setEntryFee] = useState(editing?.entryFee?.toString() || "");
+  const [prize, setPrize] = useState(editing?.prize?.toString() || "");
+  const [rules, setRules] = useState(editing?.rules || "");
+  const [dateVal, setDateVal] = useState(editing?.startsAt ? new Date(editing.startsAt).toISOString().slice(0, 10) : "");
+  const [timeVal, setTimeVal] = useState(editing?.startsAt ? new Date(editing.startsAt).toTimeString().slice(0, 5) : "");
+  const [roomId, setRoomId] = useState(editing?.roomId || "");
+  const [roomPassword, setRoomPassword] = useState(editing?.roomPassword || "");
+  const [err, setErr] = useState(null);
+
+  function submit() {
+    if (!title.trim() || !mapName.trim() || !slots || !entryFee || !prize || !dateVal || !timeVal) {
+      setErr("Please fill in every required field.");
+      return;
+    }
+    const startsAt = new Date(`${dateVal}T${timeVal}`).getTime();
+    onSave({
+      type, mode,
+      title: title.trim(),
+      map: mapName.trim(),
+      slots: parseInt(slots, 10),
+      entryFee: parseInt(entryFee, 10),
+      prize: parseInt(prize, 10),
+      rules: rules.trim(),
+      startsAt,
+      roomId: roomId.trim(),
+      roomPassword: roomPassword.trim(),
+    });
+  }
+
   return (
-    <div className="absolute inset-0 z-40 flex flex-col justify-end p-6" style={{ background: C.bg }}>
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: C.violetDim }}><Flame size={30} style={{ color: C.red }} /></div>
-        <div className="text-xl font-black" style={{ color: C.text }}>Welcome to Clutch</div>
-        <div className="text-sm mt-1 text-center" style={{ color: C.dim }}>Join Free Fire tournaments and earn by your skills.</div>
+    <div className="absolute inset-0 z-30 flex flex-col overflow-y-auto p-5" style={{ background: C.bg }}>
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-lg font-black" style={{ color: C.text }}>{editing ? "Edit Match" : "Add Match"}</span>
+        <button onClick={onCancel} className="p-1.5 rounded-full" style={{ background: C.surface }}><X size={16} style={{ color: C.dim }} /></button>
       </div>
-      <button onClick={() => onPick("signup")} className="w-full rounded-xl py-3.5 font-bold text-sm mb-3" style={{ background: C.violet, color: "#fff" }}>Create account</button>
-      <button onClick={() => onPick("login")} className="w-full rounded-xl py-3.5 font-bold text-sm" style={{ background: C.surface, color: C.text, border: `1px solid ${C.border}` }}>Log in</button>
+      <div className="text-xs mb-3 px-3 py-2 rounded-lg inline-block" style={{ background: C.violetDim, color: C.violet }}>{type === "cs" ? "CS" : "BR"} · {mode[0].toUpperCase() + mode.slice(1)}</div>
+
+      <Field label="Match name" placeholder="e.g. CS Solo Grind #21" value={title} onChange={(e) => setTitle(e.target.value)} />
+
+      <Field label="Number of slots" placeholder="e.g. 16" value={slots} onChange={(e) => setSlots(e.target.value)} inputMode="numeric" />
+      <Field label="Map name" placeholder="e.g. Bermuda" value={mapName} onChange={(e) => setMapName(e.target.value)} />
+      <Field label="Entry fee (coins)" placeholder="e.g. 20" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} inputMode="numeric" />
+      <Field label="Prize pool (coins)" placeholder="e.g. 150" value={prize} onChange={(e) => setPrize(e.target.value)} inputMode="numeric" />
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div>
+          <div className="text-xs mb-1" style={{ color: C.dim }}>Date</div>
+          <input type="date" value={dateVal} onChange={(e) => setDateVal(e.target.value)} className="w-full rounded-xl px-3 py-3 text-sm outline-none" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }} />
+        </div>
+        <div>
+          <div className="text-xs mb-1" style={{ color: C.dim }}>Time</div>
+          <input type="time" value={timeVal} onChange={(e) => setTimeVal(e.target.value)} className="w-full rounded-xl px-3 py-3 text-sm outline-none" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }} />
+        </div>
+      </div>
+
+      <TextArea label="Rules" rows={4} placeholder="Match-specific rules…" value={rules} onChange={(e) => setRules(e.target.value)} />
+
+      <Field label="Room ID (leave blank until ready)" placeholder="Room ID" value={roomId} onChange={(e) => setRoomId(e.target.value)} />
+      <Field label="Room Password (leave blank until ready)" placeholder="Room Password" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
+
+      {err && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{err}</div>}
+
+      <button onClick={submit} className="w-full rounded-xl py-3 font-bold text-sm mb-2" style={{ background: C.violet, color: "#fff" }}>{editing ? "Save Changes" : "Create Match"}</button>
+      {editing && (
+        <button onClick={() => onDelete(editing.id)} className="w-full rounded-xl py-3 font-bold text-sm mb-6" style={{ background: "#3A1620", color: C.red }}>Delete Match</button>
+      )}
     </div>
   );
 }
 
-function SignUp({ onBack, onSubmit, busy, error }) {
-  const [phone, setPhone] = useState("");
-  const [gameName, setGameName] = useState("");
-  const [realName, setRealName] = useState("");
-  const [password, setPassword] = useState("");
-  return (
-    <div className="absolute inset-0 z-40 flex flex-col p-5" style={{ background: C.bg }}>
-      <button onClick={onBack} className="p-1.5 -ml-1.5 mb-3 rounded-full self-start" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>
-      <div className="text-xl font-black mb-1" style={{ color: C.text }}>Create your account</div>
-      <div className="text-xs mb-5" style={{ color: C.dim }}>You'll use your phone number and password to log in later.</div>
-      <Field icon={Phone} placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" />
-      <Field icon={Gamepad2} placeholder="In-game name" value={gameName} onChange={(e) => setGameName(e.target.value)} />
-      <Field icon={UserCircle2} placeholder="Real name" value={realName} onChange={(e) => setRealName(e.target.value)} />
-      <Field icon={Lock} placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      {error && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{error}</div>}
-      <button
-        disabled={busy}
-        onClick={() => onSubmit({ phone: phone.trim(), gameName: gameName.trim(), realName: realName.trim(), password })}
-        className="w-full rounded-xl py-3.5 font-bold text-sm mt-2"
-        style={{ background: C.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}
-      >
-        {busy ? "Creating account…" : "Sign up"}
-      </button>
-    </div>
-  );
-}
-
-function LogIn({ onBack, onSubmit, busy, error }) {
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  return (
-    <div className="absolute inset-0 z-40 flex flex-col p-5" style={{ background: C.bg }}>
-      <button onClick={onBack} className="p-1.5 -ml-1.5 mb-3 rounded-full self-start" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>
-      <div className="text-xl font-black mb-1" style={{ color: C.text }}>Log in</div>
-      <div className="text-xs mb-5" style={{ color: C.dim }}>Use the phone number and password from sign up.</div>
-      <Field icon={Phone} placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" />
-      <Field icon={Lock} placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      {error && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{error}</div>}
-      <button
-        disabled={busy}
-        onClick={() => onSubmit({ phone: phone.trim(), password })}
-        className="w-full rounded-xl py-3.5 font-bold text-sm mt-2"
-        style={{ background: C.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}
-      >
-        {busy ? "Logging in…" : "Log in"}
-      </button>
-    </div>
-  );
-}
-
-export default function App() {
-  const [now, setNow] = useState(Date.now());
+export default function OwnerApp() {
   const [booted, setBooted] = useState(false);
-  const [session, setSession] = useState(null);
-  const [authMode, setAuthMode] = useState("choice");
-  const [authBusy, setAuthBusy] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [authError, setAuthError] = useState(null);
-
-  const [view, setView] = useState("home");
-  const [matchType, setMatchType] = useState("cs");
-  const [mode, setMode] = useState("solo");
-  const [coins, setCoins] = useState(0);
-  const [depositHistory, setDepositHistory] = useState([]);
-  const [withdrawHistory, setWithdrawHistory] = useState([]);
-  const [usedCodes, setUsedCodes] = useState([]);
-  const [joinedIds, setJoinedIds] = useState([]);
-  const [joinedPlayers, setJoinedPlayers] = useState({});
-  const [roomDetails, setRoomDetails] = useState({});
-  const [adminContent, setAdminContent] = useState({ ads: DEFAULT_ADS, rules: DEFAULT_RULES });
-  const [matches, setMatches] = useState([]);
-  const [appStatus, setAppStatus] = useState({ on: true, reason: "" });
-
-  const [activeMatch, setActiveMatch] = useState(null);
-  const [joinFormMatch, setJoinFormMatch] = useState(null);
-  const [joinGameName, setJoinGameName] = useState("");
-  const [joinUid, setJoinUid] = useState("");
-  const [joinTeammates, setJoinTeammates] = useState([]);
-  const [joinError, setJoinError] = useState(null);
-  const [joinBusy, setJoinBusy] = useState(false);
-  const [viewPlayersMatch, setViewPlayersMatch] = useState(null);
-  const [viewRoomMatch, setViewRoomMatch] = useState(null);
+  const [adminKey, setAdminKey] = useState(DEFAULT_ADMIN_KEY);
 
   const [tab, setTab] = useState("home");
-  const [acctView, setAcctView] = useState(null);
-  const [code, setCode] = useState("");
-  const [depositMsg, setDepositMsg] = useState(null);
-  const [depositBusy, setDepositBusy] = useState(false);
-  const [showMinDepositPopup, setShowMinDepositPopup] = useState(false);
-  const [successPopup, setSuccessPopup] = useState(null);
-  const [joinToast, setJoinToast] = useState(null);
-  const [showRules, setShowRules] = useState(false);
-  const [adIndex, setAdIndex] = useState(0);
+  const [matchType, setMatchType] = useState("cs");
+  const [manageOpen, setManageOpen] = useState(false);
+  const [manageMode, setManageMode] = useState(null);
+  const [matchForm, setMatchForm] = useState(null);
 
-  const [editName, setEditName] = useState("");
-  const [editPass, setEditPass] = useState("");
-  const [editPassConfirm, setEditPassConfirm] = useState("");
-  const [editMsg, setEditMsg] = useState(null);
-  const [editBusy, setEditBusy] = useState(false);
+  const [matches, setMatches] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [paymentCodes, setPaymentCodes] = useState([]);
+  const [adminContent, setAdminContentState] = useState({ ads: [], rules: [] });
+  const [appStatus, setAppStatus] = useState({ on: true, reason: "" });
 
-  const [withdrawMethod, setWithdrawMethod] = useState("easypaisa");
-  const [wAccountId, setWAccountId] = useState("");
-  const [wAccountHolder, setWAccountHolder] = useState("");
-  const [wCoins, setWCoins] = useState("");
-  const [withdrawMsg, setWithdrawMsg] = useState(null);
-  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [addCoinsVal, setAddCoinsVal] = useState("");
+
+  const [payName, setPayName] = useState("");
+  const [payCoins, setPayCoins] = useState("");
+
+  const [adsText, setAdsText] = useState("");
+  const [rulesText, setRulesText] = useState("");
+  const [newAdminKey, setNewAdminKey] = useState("");
+  const [offReason, setOffReason] = useState("");
+  const [settingsMsg, setSettingsMsg] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      const existingSession = readSession();
-      if (existingSession) {
-        try {
-          const acc = await fetchAccount(existingSession.phone);
-          if (acc && !acc.banned) {
-            setSession({ phone: acc.phone, gameName: acc.gameName, realName: acc.realName });
-            setCoins(acc.coins ?? 0);
-            setDepositHistory(acc.depositHistory || []);
-            setWithdrawHistory(acc.withdrawHistory || []);
-            setJoinedIds(acc.joinedMatchIds || []);
-          } else {
-            clearSession();
-          }
-        } catch (e) {
-          console.error("Failed to load account:", e);
-        }
-      }
-      setTimeout(() => setBooted(true), 1600);
-    })();
+    const t = setTimeout(() => setBooted(true), 1400);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
-    const unsubRooms = onSnapshot(collection(db, "roomDetails"), (snap) => {
-      const m = {};
-      snap.forEach((d) => { m[d.id] = d.data(); });
-      setRoomDetails(m);
-    }, (e) => console.error("roomDetails listener error:", e));
-
-    const unsubPlayers = onSnapshot(collection(db, "joinedPlayers"), (snap) => {
-      const m = {};
-      snap.forEach((d) => { m[d.id] = d.data().teams || []; });
-      setJoinedPlayers(m);
-    }, (e) => console.error("joinedPlayers listener error:", e));
-
-    const unsubAdmin = onSnapshot(doc(db, "adminContent", "home"), (d) => {
-      if (d.exists()) {
-        const data = d.data();
-        setAdminContent({ ads: data.ads?.length ? data.ads : DEFAULT_ADS, rules: data.rules?.length ? data.rules : DEFAULT_RULES });
-      }
-    }, (e) => console.error("adminContent listener error:", e));
-
+    const unsubAuth = onSnapshot(doc(db, "settings", "adminAuth"), (d) => {
+      if (d.exists()) setAdminKey(d.data().key || DEFAULT_ADMIN_KEY);
+      else setAdminKey(DEFAULT_ADMIN_KEY);
+    });
+    const unsubStatus = onSnapshot(doc(db, "settings", "appStatus"), (d) => {
+      if (d.exists()) setAppStatus({ on: d.data().on !== false, reason: d.data().reason || "" });
+    });
     const unsubMatches = onSnapshot(collection(db, "matches"), (snap) => {
       const list = [];
       snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
       list.sort((a, b) => a.startsAt - b.startsAt);
       setMatches(list);
-    }, (e) => console.error("matches listener error:", e));
-
-    const unsubStatus = onSnapshot(doc(db, "settings", "appStatus"), (d) => {
-      if (d.exists()) setAppStatus({ on: d.data().on !== false, reason: d.data().reason || "" });
-      else setAppStatus({ on: true, reason: "" });
-    }, (e) => console.error("appStatus listener error:", e));
-
-    return () => { unsubRooms(); unsubPlayers(); unsubAdmin(); unsubMatches(); unsubStatus(); };
+    });
+    const unsubAccounts = onSnapshot(collection(db, "accounts"), (snap) => {
+      const list = [];
+      snap.forEach((d) => list.push({ phone: d.id, ...d.data() }));
+      setAccounts(list);
+    });
+    const unsubPayments = onSnapshot(collection(db, "paymentCodes"), (snap) => {
+      const list = [];
+      snap.forEach((d) => list.push({ code: d.id, ...d.data() }));
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setPaymentCodes(list);
+    });
+    const unsubAdmin = onSnapshot(doc(db, "adminContent", "home"), (d) => {
+      if (d.exists()) setAdminContentState({ ads: d.data().ads || [], rules: d.data().rules || [] });
+    });
+    return () => { unsubAuth(); unsubStatus(); unsubMatches(); unsubAccounts(); unsubPayments(); unsubAdmin(); };
   }, []);
 
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  useEffect(() => {
-    const id = setInterval(() => setAdIndex((i) => (i + 1) % (adminContent.ads.length || 1)), 4000);
-    return () => clearInterval(id);
-  }, [adminContent.ads.length]);
-
-  const filteredMatches = matches.filter((m) => m.type === matchType && m.mode === mode);
-  const upcomingJoinedMatches = matches.filter((m) => joinedIds.includes(m.id));
-
-  async function handleSignUp({ phone, gameName, realName, password }) {
+  function handleLogin(key) {
     setAuthError(null);
-    if (!phone || !gameName || !realName || !password) { setAuthError("Please fill in every field."); return; }
-    if (password.length < 4) { setAuthError("Password should be at least 4 characters."); return; }
-    setAuthBusy(true);
-    try {
-      const existing = await fetchAccount(phone);
-      if (existing) { setAuthError("An account with this phone number already exists — try logging in."); setAuthBusy(false); return; }
-      const profile = { phone, gameName, realName };
-      await createAccount(phone, { ...profile, password, coins: 0, depositHistory: [], withdrawHistory: [], joinedMatchIds: [] });
-      writeSession(profile);
-      setSession(profile);
-      setCoins(0);
-      setDepositHistory([]);
-      setWithdrawHistory([]);
-      setJoinedIds([]);
-    } catch (e) {
-      console.error("Sign up failed:", e);
-      setAuthError("Couldn't create your account — check your connection and try again.");
-    }
-    setAuthBusy(false);
-  }
-
-  async function handleLogIn({ phone, password }) {
-    setAuthError(null);
-    if (!phone || !password) { setAuthError("Enter your phone number and password."); return; }
-    setAuthBusy(true);
-    try {
-      const acc = await fetchAccount(phone);
-      if (!acc || acc.password !== password) { setAuthError("Phone number or password is incorrect."); setAuthBusy(false); return; }
-      if (acc.banned) { setAuthError("This account has been banned."); setAuthBusy(false); return; }
-      const profile = { phone: acc.phone, gameName: acc.gameName, realName: acc.realName };
-      writeSession(profile);
-      setSession(profile);
-      setCoins(acc.coins ?? 0);
-      setDepositHistory(acc.depositHistory || []);
-      setWithdrawHistory(acc.withdrawHistory || []);
-      setJoinedIds(acc.joinedMatchIds || []);
-    } catch (e) {
-      console.error("Log in failed:", e);
-      setAuthError("Couldn't log you in — check your connection and try again.");
-    }
-    setAuthBusy(false);
-  }
-
-  function handleLogout() {
-    clearSession();
-    setSession(null);
-    setAuthMode("choice");
-    setTab("home"); setView("home"); setActiveMatch(null); setAcctView(null);
-  }
-
-  function shareApp() {
-    if (navigator.share) {
-      navigator.share({ title: "Clutch", text: "Join me on Clutch — Free Fire tournaments!", url: window.location.href }).catch(() => {});
+    if (key === adminKey) {
+      setAuthed(true);
     } else {
-      setJoinToast("Share link copied — send it to your squad!");
+      setAuthError("Incorrect admin key.");
     }
   }
 
-  async function submitCode() {
-    const clean = code.trim().toUpperCase();
-    if (!clean) return;
-    if (usedCodes.includes(clean)) { setDepositMsg({ text: "This payment ID has already been used." }); return; }
-    const amount = VALID_CODES[clean];
-    if (!amount) { setDepositMsg({ text: "Invalid payment ID. Double-check and try again." }); return; }
-    if (amount < MIN_DEPOSIT) { setShowMinDepositPopup(true); return; }
-    setDepositBusy(true);
-    try {
-      const newCoins = coins + amount;
-      const entry = { amount, code: clean, date: new Date().toISOString() };
-      const newHistory = [entry, ...depositHistory];
-      await patchAccount(session.phone, { coins: newCoins, depositHistory: newHistory });
-      setCoins(newCoins);
-      setDepositHistory(newHistory);
-      setUsedCodes((u) => [...u, clean]);
-      setCode(""); setDepositMsg(null); setSuccessPopup(amount);
-    } catch (e) {
-      console.error("Deposit failed:", e);
-      setDepositMsg({ text: "Couldn't process the deposit — check your connection and try again." });
+  async function saveMatch(data) {
+    const id = matchForm.editing ? matchForm.editing.id : `${data.type}-${Date.now()}`;
+    await setDoc(doc(db, "matches", id), { ...data, createdAt: matchForm.editing?.createdAt || Date.now() });
+    setMatchForm(null);
+  }
+  async function deleteMatch(id) {
+    await deleteDoc(doc(db, "matches", id));
+    await deleteDoc(doc(db, "joinedPlayers", id)).catch(() => {});
+    await deleteDoc(doc(db, "roomDetails", id)).catch(() => {});
+    setMatchForm(null);
+  }
+
+  async function removeProfile(phone) {
+    await deleteDoc(doc(db, "accounts", phone));
+    setSelectedAccount(null);
+  }
+  async function banAccount(phone) {
+    await updateDoc(doc(db, "accounts", phone), { banned: true });
+    setSelectedAccount(null);
+  }
+  async function addCoinsToAccount(phone, current) {
+    const amt = parseInt(addCoinsVal, 10);
+    if (!amt) return;
+    await updateDoc(doc(db, "accounts", phone), { coins: (current || 0) + amt });
+    setAddCoinsVal("");
+  }
+
+  async function createPaymentCode() {
+    if (!payName.trim() || !payCoins) return;
+    await setDoc(doc(db, "paymentCodes", payName.trim().toUpperCase()), { coins: parseInt(payCoins, 10), createdAt: Date.now() });
+    setPayName(""); setPayCoins("");
+  }
+
+  async function saveSettings() {
+    const ads = adsText.split("\n").map((s) => s.trim()).filter(Boolean);
+    const rulesArr = rulesText.split("\n").map((s) => s.trim()).filter(Boolean);
+    await setDoc(doc(db, "adminContent", "home"), { ads: ads.length ? ads : adminContent.ads, rules: rulesArr.length ? rulesArr : adminContent.rules });
+    if (newAdminKey.trim()) {
+      await setDoc(doc(db, "settings", "adminAuth"), { key: newAdminKey.trim() });
     }
-    setDepositBusy(false);
+    setSettingsMsg("Saved.");
+    setTimeout(() => setSettingsMsg(null), 2000);
   }
 
-  async function submitWithdraw() {
-    setWithdrawMsg(null);
-    const amt = parseInt(wCoins, 10);
-    if (!wAccountId.trim() || !wAccountHolder.trim() || !amt) { setWithdrawMsg("Please fill in every field."); return; }
-    if (amt > coins) { setWithdrawMsg("You don't have enough coins for this withdrawal."); return; }
-    setWithdrawBusy(true);
-    try {
-      const newCoins = coins - amt;
-      const entry = { method: withdrawMethod, amount: amt, accountId: wAccountId.trim(), accountHolder: wAccountHolder.trim(), date: new Date().toISOString(), status: "Pending" };
-      const newHistory = [entry, ...withdrawHistory];
-      await patchAccount(session.phone, { coins: newCoins, withdrawHistory: newHistory });
-      setCoins(newCoins);
-      setWithdrawHistory(newHistory);
-      setWAccountId(""); setWAccountHolder(""); setWCoins("");
-      setJoinToast("Withdrawal request sent — the admin will process it shortly.");
-      setAcctView(null);
-    } catch (e) {
-      console.error("Withdraw failed:", e);
-      setWithdrawMsg("Couldn't send the request — check your connection and try again.");
-    }
-    setWithdrawBusy(false);
+  async function toggleAppStatus(on) {
+    await setDoc(doc(db, "settings", "appStatus"), { on, reason: on ? "" : offReason.trim() });
   }
 
-  function openJoinForm(m) {
-    setJoinFormMatch(m);
-    setJoinGameName("");
-    setJoinUid("");
-    const teammateCount = m.mode === "duo" ? 1 : m.mode === "squad" ? 3 : 0;
-    setJoinTeammates(Array.from({ length: teammateCount }, () => ({ gameName: "", uid: "" })));
-    setJoinError(null);
+  const withdrawRequests = [];
+  accounts.forEach((acc) => {
+    (acc.withdrawHistory || []).forEach((w, idx) => {
+      if (w.status === "Pending") withdrawRequests.push({ phone: acc.phone, gameName: acc.gameName, idx, ...w });
+    });
+  });
+
+  async function resolveWithdraw(phone, idx, approve) {
+    const acc = accounts.find((a) => a.phone === phone);
+    if (!acc) return;
+    const history = [...(acc.withdrawHistory || [])];
+    history[idx] = { ...history[idx], status: approve ? "Approved" : "Rejected" };
+    await updateDoc(doc(db, "accounts", phone), { withdrawHistory: history });
   }
 
-  function updateJoinTeammate(i, field, value) {
-    setJoinTeammates((ts) => ts.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)));
-  }
-
-  async function confirmJoin() {
-    const m = joinFormMatch;
-    if (!joinGameName.trim() || !joinUid.trim()) { setJoinError("Your game name and UID are required to join."); return; }
-    if (joinTeammates.some((t) => !t.gameName.trim() || !t.uid.trim())) { setJoinError("Every teammate's game name and UID are required."); return; }
-    if (joinedIds.includes(m.id)) { setJoinFormMatch(null); return; }
-    if (coins < m.entryFee) { setJoinError("Not enough coins — deposit to join this match."); return; }
-    setJoinBusy(true);
-    try {
-      const newCoins = coins - m.entryFee;
-      const newJoinedIds = [...joinedIds, m.id];
-      const members = [
-        { gameName: joinGameName.trim(), uid: joinUid.trim() },
-        ...joinTeammates.map((t) => ({ gameName: t.gameName.trim(), uid: t.uid.trim() })),
-      ];
-      await patchAccount(session.phone, { coins: newCoins, joinedMatchIds: newJoinedIds });
-      await setDoc(doc(db, "joinedPlayers", String(m.id)), {
-        teams: arrayUnion({ members }),
-      }, { merge: true });
-      setCoins(newCoins);
-      setJoinedIds(newJoinedIds);
-      setJoinFormMatch(null);
-      setActiveMatch(null);
-      setJoinToast(`Joined ${m.title}!`);
-    } catch (e) {
-      console.error("Join failed:", e);
-      setJoinError("Couldn't join the match — check your connection and try again.");
-    }
-    setJoinBusy(false);
-  }
-
-  async function submitProfileEdit() {
-    setEditMsg(null);
-    if (editPass || editPassConfirm) {
-      if (editPass.length < 4) { setEditMsg("New password should be at least 4 characters."); return; }
-      if (editPass !== editPassConfirm) { setEditMsg("Passwords do not match."); return; }
-    }
-    setEditBusy(true);
-    try {
-      const newGameName = editName.trim() || session.gameName;
-      const fields = { gameName: newGameName };
-      if (editPass) fields.password = editPass;
-      await patchAccount(session.phone, fields);
-      const updatedSession = { ...session, gameName: newGameName };
-      writeSession(updatedSession);
-      setSession(updatedSession);
-      setEditPass(""); setEditPassConfirm("");
-      setJoinToast("Profile updated.");
-      setAcctView(null);
-    } catch (e) {
-      console.error("Profile update failed:", e);
-      setEditMsg("Couldn't save changes — check your connection and try again.");
-    }
-    setEditBusy(false);
-  }
-
-  useEffect(() => {
-    if (!joinToast) return;
-    const t = setTimeout(() => setJoinToast(null), 2400);
-    return () => clearTimeout(t);
-  }, [joinToast]);
-
-  const matchesPlayed = joinedIds.length + 6, totalKills = 42, totalEarned = 480;
+  const filteredMatches = matches.filter((m) => m.type === matchType && m.mode === manageMode);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#050408" }}>
       <div className="relative w-full overflow-hidden flex flex-col" style={{ maxWidth: 390, height: 780, background: C.bg, borderRadius: 32, border: `1px solid ${C.border}`, boxShadow: "0 30px 80px rgba(0,0,0,0.6)" }}>
 
         {!booted && <Splash />}
+        {booted && !authed && <AdminLogin onSubmit={handleLogin} error={authError} />}
 
-        {booted && !appStatus.on && (
-          <div className="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 text-center" style={{ background: C.bg }}>
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "#3A1620" }}><Flame size={30} style={{ color: C.red }} /></div>
-            <div className="text-xl font-black mb-2" style={{ color: C.text }}>Clutch is temporarily unavailable</div>
-            {appStatus.reason && <div className="text-sm" style={{ color: C.dim }}>{appStatus.reason}</div>}
-          </div>
-        )}
-
-        {booted && appStatus.on && !session && authMode === "choice" && <AuthChoice onPick={(m) => { setAuthError(null); setAuthMode(m); }} />}
-        {booted && appStatus.on && !session && authMode === "signup" && <SignUp onBack={() => setAuthMode("choice")} onSubmit={handleSignUp} busy={authBusy} error={authError} />}
-        {booted && appStatus.on && !session && authMode === "login" && <LogIn onBack={() => setAuthMode("choice")} onSubmit={handleLogIn} busy={authBusy} error={authError} />}
-
-        {booted && appStatus.on && session && (
+        {booted && authed && (
           <>
             <div className="flex items-center gap-1.5 px-4 pt-4">
               <Flame size={18} style={{ color: C.red }} />
               <span className="text-base font-black tracking-tight" style={{ color: C.text }}>CLUTCH</span>
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: C.surfaceAlt, color: C.dim }}>FREE FIRE</span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: C.surfaceAlt, color: C.dim }}>OWNER PANEL</span>
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 pb-2 relative mt-1">
 
-              {tab === "home" && view === "home" && (
+              {tab === "home" && !manageOpen && (
                 <>
-                  <Header title="Home" coins={coins} onAdd={() => { setTab("account"); setAcctView("deposit"); }} />
-                  <BigCard icon={Swords} title="CS Matches" sub="Clash Squad · Solo, Duo, Squad" color={C.violet} onClick={() => { setMatchType("cs"); setView("modes"); }} />
-                  <BigCard icon={Crosshair} title="BR Matches" sub="Battle Royale · Solo, Duo, Squad" color={C.teal} onClick={() => { setMatchType("br"); setView("modes"); }} />
-                  <button onClick={() => setShowRules(true)} className="w-full text-left rounded-2xl p-3.5 mt-1 mb-3" style={{ background: `linear-gradient(135deg, ${C.violetDim}, ${C.surface})`, border: `1px solid ${C.border}` }}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Megaphone size={14} style={{ color: C.amber }} />
-                      <span className="text-[10px] font-bold tracking-wide uppercase" style={{ color: C.amber }}>Announcement</span>
-                    </div>
-                    <div className="text-sm font-semibold" style={{ color: C.text }}>{adminContent.ads[adIndex % adminContent.ads.length]}</div>
-                    <div className="text-xs mt-1.5 underline" style={{ color: C.dim }}>View tournament rules</div>
+                  <Header title="Home" />
+                  <div className="rounded-2xl p-4 mb-3 flex items-center gap-3" style={{ background: appStatus.on ? "#12332E" : "#3A1620" }}>
+                    <Power size={18} style={{ color: appStatus.on ? C.teal : C.red }} />
+                    <span className="text-sm font-bold" style={{ color: appStatus.on ? C.teal : C.red }}>App is currently {appStatus.on ? "ON" : "OFF"}</span>
+                  </div>
+                  <button onClick={() => { setMatchType("cs"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.violet}` }}>
+                    <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${C.violet}22` }}><Swords size={20} style={{ color: C.violet }} /></span>
+                    <span className="flex-1 text-left">
+                      <div className="text-[15px] font-bold" style={{ color: C.text }}>CS Matches</div>
+                      <div className="text-xs mt-0.5" style={{ color: C.dim }}>{matches.filter((m) => m.type === "cs").length} active</div>
+                    </span>
+                    <Pencil size={16} style={{ color: C.dim }} />
                   </button>
-                  <button onClick={() => setView("upcoming")} className="w-full rounded-2xl p-4 flex items-center gap-3" style={{ background: `linear-gradient(135deg, ${C.amberDim}, ${C.surface})`, border: `1px solid ${C.border}` }}>
-                    <CalendarClock size={20} style={{ color: C.amber }} />
-                    <span className="italic font-black text-base tracking-wide" style={{ color: C.amber, letterSpacing: "0.03em" }}>Upcoming Matches</span>
-                    <ChevronRight size={18} style={{ color: C.dim, marginLeft: "auto" }} />
+                  <button onClick={() => { setMatchType("br"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.teal}` }}>
+                    <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${C.teal}22` }}><Crosshair size={20} style={{ color: C.teal }} /></span>
+                    <span className="flex-1 text-left">
+                      <div className="text-[15px] font-bold" style={{ color: C.text }}>BR Matches</div>
+                      <div className="text-xs mt-0.5" style={{ color: C.dim }}>{matches.filter((m) => m.type === "br").length} active</div>
+                    </span>
+                    <Pencil size={16} style={{ color: C.dim }} />
                   </button>
                 </>
               )}
 
-              {tab === "home" && view === "modes" && (
+              {tab === "home" && manageOpen && !manageMode && !matchForm && (
                 <>
-                  <Header title={matchType === "cs" ? "CS Matches" : "BR Matches"} onBack={() => setView("home")} coins={coins} onAdd={() => { setTab("account"); setAcctView("deposit"); }} />
-                  <ModeCard icon={User} title="Solo" sub="1 player per team" onClick={() => { setMode("solo"); setView("matches"); }} />
-                  <ModeCard icon={Users} title="Duo" sub="2 players per team" onClick={() => { setMode("duo"); setView("matches"); }} />
-                  <ModeCard icon={Users} title="Squad" sub="4 players per team" onClick={() => { setMode("squad"); setView("matches"); }} />
+                  <Header title={matchType === "cs" ? "CS Matches" : "BR Matches"} onBack={() => setManageOpen(false)} />
+                  {[
+                    { id: "solo", label: "Solo", sub: "1 player per team", icon: User },
+                    { id: "duo", label: "Duo", sub: "2 players per team", icon: Users },
+                    { id: "squad", label: "Squad", sub: "4 players per team", icon: Users },
+                  ].map(({ id, label, sub, icon: Icon }) => (
+                    <button key={id} onClick={() => setManageMode(id)} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
+                      <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: C.violetDim }}><Icon size={20} style={{ color: C.violet }} /></span>
+                      <span className="flex-1 text-left">
+                        <div className="text-[15px] font-bold" style={{ color: C.text }}>{label}</div>
+                        <div className="text-xs mt-0.5" style={{ color: C.dim }}>{sub}</div>
+                      </span>
+                      <ChevronRight size={18} style={{ color: C.dim }} />
+                    </button>
+                  ))}
                 </>
               )}
 
-              {tab === "home" && view === "matches" && (
+              {tab === "home" && manageOpen && manageMode && !matchForm && (
                 <>
-                  <Header title={`${matchType === "cs" ? "CS" : "BR"} · ${mode[0].toUpperCase() + mode.slice(1)}`} onBack={() => setView("modes")} coins={coins} onAdd={() => { setTab("account"); setAcctView("deposit"); }} />
-                  {filteredMatches.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No matches yet — check back soon.</div>}
-                  {filteredMatches.map((m) => <MatchCard key={m.id} m={m} now={now} onOpen={setActiveMatch} joined={joinedIds.includes(m.id)} joinedCount={(joinedPlayers[m.id] || []).length} />)}
+                  <Header title={`${matchType === "cs" ? "CS" : "BR"} · ${manageMode[0].toUpperCase() + manageMode.slice(1)}`} onBack={() => setManageMode(null)} right={
+                    <button onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: null })} className="p-2 rounded-full" style={{ background: C.violetDim }}><Plus size={16} style={{ color: C.violet }} /></button>
+                  } />
+                  {filteredMatches.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No matches yet — tap + to add one.</div>}
+                  {filteredMatches.map((m) => (
+                    <button key={m.id} onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: m })} className="w-full text-left rounded-2xl p-3.5 mb-3 flex items-center justify-between" style={{ background: C.surface }}>
+                      <div>
+                        <div className="text-sm font-bold" style={{ color: C.text }}>{m.title}</div>
+                        <div className="text-xs" style={{ color: C.dim }}>{m.map} · {m.slots} slots · {new Date(m.startsAt).toLocaleString()}</div>
+                      </div>
+                      <Pencil size={15} style={{ color: C.dim }} />
+                    </button>
+                  ))}
                 </>
               )}
 
-              {tab === "home" && view === "upcoming" && (
+              {matchForm && (
+                <MatchForm type={matchForm.type} mode={matchForm.mode} editing={matchForm.editing} onCancel={() => setMatchForm(null)} onSave={saveMatch} onDelete={deleteMatch} />
+              )}
+
+              {tab === "accounts" && (
                 <>
-                  <Header title="Upcoming Matches" onBack={() => setView("home")} coins={coins} onAdd={() => { setTab("account"); setAcctView("deposit"); }} />
-                  {upcomingJoinedMatches.length === 0 && (
-                    <div className="text-sm text-center mt-8" style={{ color: C.dim }}>You haven't joined any matches yet.</div>
-                  )}
-                  {upcomingJoinedMatches.map((m) => (
-                    <div key={m.id} className="rounded-2xl p-3.5 mb-3" style={{ background: C.surface }}>
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="text-[15px] font-bold" style={{ color: C.text }}>{m.title}</div>
-                        <StatusPill st={statusOf(m, now)} />
+                  <Header title="Accounts" />
+                  {accounts.map((acc) => (
+                    <button key={acc.phone} onClick={() => setSelectedAccount(acc)} className="w-full flex items-center justify-between rounded-2xl p-3.5 mb-3" style={{ background: C.surface }}>
+                      <div className="text-left">
+                        <div className="text-sm font-bold" style={{ color: C.text }}>{acc.gameName} {acc.banned && <span style={{ color: C.red }}>(Banned)</span>}</div>
+                        <div className="text-xs" style={{ color: C.dim }}>{acc.phone}</div>
                       </div>
-                      <div className="text-xs mb-3" style={{ color: C.dim }}>
-                        {statusOf(m, now) === "live" ? "Match is live now" : `Starts in ${countdown(m.startsAt - now)}`}
+                      <div className="text-sm font-bold" style={{ color: C.amber }}>{acc.coins ?? 0} coins</div>
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {tab === "payments" && (
+                <>
+                  <Header title="Payment ID" />
+                  <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface }}>
+                    <Field label="Payment ID name" placeholder='e.g. "99989"' value={payName} onChange={(e) => setPayName(e.target.value)} />
+                    <Field label="Coins for this ID" placeholder="e.g. 200" value={payCoins} onChange={(e) => setPayCoins(e.target.value)} inputMode="numeric" />
+                    <button onClick={createPaymentCode} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.violet, color: "#fff" }}>Create</button>
+                  </div>
+                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.dim }}>Recent Payment IDs</div>
+                  <div className="rounded-2xl overflow-hidden" style={{ background: C.surface }}>
+                    {paymentCodes.length === 0 && <div className="p-3.5 text-xs" style={{ color: C.dim }}>None created yet.</div>}
+                    {paymentCodes.map((p) => (
+                      <div key={p.code} className="flex items-center justify-between px-3.5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <span className="text-sm font-mono font-bold" style={{ color: C.text }}>{p.code}</span>
+                        <span className="text-sm font-bold" style={{ color: C.amber }}>{p.coins} coins</span>
                       </div>
-                      <button onClick={() => setViewRoomMatch(m)} className="w-full rounded-xl py-2.5 font-bold text-xs flex items-center justify-center gap-2" style={{ background: C.violetDim, color: C.violet }}>
-                        <DoorOpen size={14} /> Room details
-                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {tab === "withdrawals" && (
+                <>
+                  <Header title="Withdrawal Requests" />
+                  {withdrawRequests.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No pending requests.</div>}
+                  {withdrawRequests.map((w, i) => (
+                    <div key={i} className="rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
+                      <div className="text-sm font-bold mb-1" style={{ color: C.text }}>{w.gameName} · {w.phone}</div>
+                      <div className="text-xs mb-1" style={{ color: C.dim }}>Method: <span style={{ color: C.text }}>{w.method}</span></div>
+                      <div className="text-xs mb-1" style={{ color: C.dim }}>Account: <span style={{ color: C.text }}>{w.accountHolder} — {w.accountId}</span></div>
+                      <div className="text-sm font-bold mb-3" style={{ color: C.amber }}>{w.amount} coins</div>
+                      <div className="flex gap-2">
+                        <button onClick={() => resolveWithdraw(w.phone, w.idx, false)} className="flex-1 rounded-xl py-2.5 font-bold text-xs" style={{ background: "#3A1620", color: C.red }}>Reject</button>
+                        <button onClick={() => resolveWithdraw(w.phone, w.idx, true)} className="flex-1 rounded-xl py-2.5 font-bold text-xs" style={{ background: "#12332E", color: C.teal }}>Approve</button>
+                      </div>
                     </div>
                   ))}
                 </>
               )}
 
-              {tab === "leaderboard" && (
+              {tab === "settings" && (
                 <>
-                  <Header title="Leaderboard" coins={coins} onAdd={() => { setTab("account"); setAcctView("deposit"); }} />
-                  <div className="rounded-2xl overflow-hidden" style={{ background: C.surface }}>
-                    {LEADERBOARD.map((p, i) => (
-                      <div key={p.name} className="flex items-center gap-3 px-3.5 py-3" style={{ borderBottom: i < LEADERBOARD.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                        <span className="w-6 text-sm font-bold text-center" style={{ color: i < 3 ? C.amber : C.dim }}>{i + 1}</span>
-                        <span className="flex-1 text-sm font-semibold" style={{ color: p.name === "You" ? C.violet : C.text }}>{p.name}</span>
-                        <span className="flex items-center gap-1 text-xs" style={{ color: C.dim }}><Skull size={12} /> {p.kills}</span>
-                        <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: C.amber }}><Coins size={12} /> {p.earned}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {tab === "account" && acctView === null && (
-                <>
-                  <Header title="Account" coins={coins} onAdd={() => setAcctView("deposit")} />
-                  <div className="flex flex-col items-center text-center pt-3 pb-5">
-                    <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3" style={{ background: C.violetDim }}><User size={26} style={{ color: C.violet }} /></div>
-                    <div className="font-bold" style={{ color: C.text }}>{session.gameName}</div>
-                    <div className="text-xs mt-1" style={{ color: C.dim }}>{session.realName}</div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mb-4">
-                    <div className="rounded-xl p-3 text-center" style={{ background: C.surface }}>
-                      <div className="text-lg font-bold" style={{ color: C.text }}>{matchesPlayed}</div>
-                      <div className="text-[10px] uppercase tracking-wide mt-0.5" style={{ color: C.dim }}>Matches</div>
+                  <Header title="Settings" />
+                  <div className="rounded-2xl p-4 mb-4" style={{ background: appStatus.on ? "#12332E" : "#3A1620" }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold" style={{ color: appStatus.on ? C.teal : C.red }}>App is {appStatus.on ? "ON" : "OFF"}</span>
+                      <button onClick={() => toggleAppStatus(!appStatus.on)} className="px-4 py-2 rounded-full text-xs font-bold" style={{ background: appStatus.on ? C.red : C.teal, color: "#000" }}>{appStatus.on ? "Turn OFF" : "Turn ON"}</button>
                     </div>
-                    <div className="rounded-xl p-3 text-center" style={{ background: C.surface }}>
-                      <div className="text-lg font-bold" style={{ color: C.text }}>{totalKills}</div>
-                      <div className="text-[10px] uppercase tracking-wide mt-0.5" style={{ color: C.dim }}>Kills</div>
-                    </div>
-                    <div className="rounded-xl p-3 text-center" style={{ background: C.surface }}>
-                      <div className="text-lg font-bold" style={{ color: C.amber }}>{totalEarned}</div>
-                      <div className="text-[10px] uppercase tracking-wide mt-0.5" style={{ color: C.dim }}>Earned</div>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl overflow-hidden mb-3" style={{ background: C.surface }}>
-                    <AccountRow icon={Pencil} label="Edit Profile" onClick={() => { setEditName(session.gameName); setEditMsg(null); setAcctView("editProfile"); }} />
-                    <AccountRow icon={Wallet} label="Wallet" onClick={() => setAcctView("wallet")} />
-                    <AccountRow icon={ArrowDownToLine} label="Deposit" color={C.amber} onClick={() => setAcctView("deposit")} />
-                    <AccountRow icon={ArrowUpFromLine} label="Withdraw" color={C.teal} onClick={() => setAcctView("withdraw")} />
-                  </div>
-                  <div className="rounded-2xl overflow-hidden" style={{ background: C.surface }}>
-                    <button onClick={shareApp} className="w-full flex items-center gap-3 px-3.5 py-3.5" style={{ borderBottom: `1px solid ${C.border}` }}>
-                      <Share2 size={16} style={{ color: C.dim }} />
-                      <span className="flex-1 text-left text-sm font-semibold" style={{ color: C.text }}>Share the app</span>
-                      <ChevronRight size={16} style={{ color: C.dim }} />
-                    </button>
-                    <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3.5 py-3.5">
-                      <LogOut size={16} style={{ color: C.red }} />
-                      <span className="flex-1 text-left text-sm font-semibold" style={{ color: C.red }}>Log out</span>
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {tab === "account" && acctView === "editProfile" && (
-                <>
-                  <Header title="Edit Profile" onBack={() => setAcctView(null)} coins={coins} onAdd={() => {}} />
-                  <div className="rounded-2xl p-4" style={{ background: C.surface }}>
-                    <div className="text-xs mb-1" style={{ color: C.dim }}>Full Name</div>
-                    <Field placeholder="In-game name" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                    <div className="text-xs mb-1 mt-1" style={{ color: C.dim }}>New Password</div>
-                    <Field icon={Lock} placeholder="New password" type="password" value={editPass} onChange={(e) => setEditPass(e.target.value)} />
-                    <div className="text-xs mb-1" style={{ color: C.dim }}>Re-enter New Password</div>
-                    <Field icon={Lock} placeholder="Re-enter new password" type="password" value={editPassConfirm} onChange={(e) => setEditPassConfirm(e.target.value)} />
-                    {editMsg && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{editMsg}</div>}
-                    <button disabled={editBusy} onClick={submitProfileEdit} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.amber, color: "#1a1400", opacity: editBusy ? 0.6 : 1 }}>{editBusy ? "Saving…" : "Update Profile"}</button>
-                  </div>
-                </>
-              )}
-
-              {tab === "account" && acctView === "wallet" && (
-                <>
-                  <Header title="Wallet" onBack={() => setAcctView(null)} coins={coins} onAdd={() => {}} />
-                  <div className="rounded-2xl p-4 mb-4 text-center" style={{ background: C.surface }}>
-                    <div className="text-xs uppercase tracking-wide" style={{ color: C.dim }}>Current Balance</div>
-                    <div className="text-3xl font-black mt-1" style={{ color: C.amber }}>{coins} coins</div>
-                  </div>
-                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.dim }}>Deposit History</div>
-                  <div className="rounded-2xl overflow-hidden mb-4" style={{ background: C.surface }}>
-                    {depositHistory.length === 0 && <div className="p-3.5 text-xs" style={{ color: C.dim }}>No deposits yet.</div>}
-                    {depositHistory.map((d, i) => (
-                      <div key={i} className="flex items-center justify-between px-3.5 py-3" style={{ borderBottom: i < depositHistory.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                        <span className="text-xs" style={{ color: C.dim }}>{new Date(d.date).toLocaleDateString()}</span>
-                        <span className="text-sm font-bold" style={{ color: C.teal }}>+{d.amount} coins</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.dim }}>Withdrawal History</div>
-                  <div className="rounded-2xl overflow-hidden" style={{ background: C.surface }}>
-                    {withdrawHistory.length === 0 && <div className="p-3.5 text-xs" style={{ color: C.dim }}>No withdrawals yet.</div>}
-                    {withdrawHistory.map((w, i) => (
-                      <div key={i} className="flex items-center justify-between px-3.5 py-3" style={{ borderBottom: i < withdrawHistory.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                        <span className="text-xs" style={{ color: C.dim }}>{new Date(w.date).toLocaleDateString()} · {w.method}</span>
-                        <span className="text-sm font-bold" style={{ color: C.red }}>-{w.amount} ({w.status})</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {tab === "account" && acctView === "deposit" && (
-                <>
-                  <Header title="Deposit" onBack={() => setAcctView(null)} coins={coins} onAdd={() => {}} />
-                  <div className="rounded-2xl p-4 mt-1" style={{ background: C.surface }}>
-                    <div className="text-sm mb-3" style={{ color: C.dim }}>Send payment to get your payment ID on WhatsApp, then paste it below to receive your coins instantly. Minimum deposit is 100 coins.</div>
-                    <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Paste payment ID" className="w-full rounded-xl px-3.5 py-3 text-sm font-mono outline-none mb-3" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }} />
-                    <button disabled={depositBusy} onClick={submitCode} className="w-full rounded-xl py-3 font-bold text-sm mb-3" style={{ background: C.violet, color: "#fff", opacity: depositBusy ? 0.6 : 1 }}>{depositBusy ? "Processing…" : "Redeem coins"}</button>
-                    <a href={WHATSAPP_LINK} target="_blank" rel="noreferrer" className="w-full rounded-xl py-3 font-bold text-sm flex items-center justify-center gap-2" style={{ background: "#1E4B3A", color: "#5FE0A8" }}>
-                      <MessageCircle size={16} /> Click here to contact admin for payment ID
-                    </a>
-                    {depositMsg && <div className="text-xs mt-3 font-semibold" style={{ color: C.red }}>{depositMsg.text}</div>}
-                  </div>
-                </>
-              )}
-
-              {tab === "account" && acctView === "withdraw" && (
-                <>
-                  <Header title="Withdraw" onBack={() => setAcctView(null)} coins={coins} onAdd={() => {}} />
-                  <div className="rounded-2xl p-4 mt-1 text-center mb-3" style={{ background: C.surface }}>
-                    <div className="text-xs uppercase tracking-wide" style={{ color: C.dim }}>Available balance</div>
-                    <div className="text-2xl font-black mt-1" style={{ color: C.amber }}>{coins} coins</div>
-                  </div>
-                  <div className="flex rounded-xl overflow-hidden mb-3" style={{ border: `1px solid ${C.border}` }}>
-                    <button onClick={() => setWithdrawMethod("easypaisa")} className="flex-1 py-3 text-sm font-bold" style={{ background: withdrawMethod === "easypaisa" ? C.teal : C.surface, color: withdrawMethod === "easypaisa" ? "#04241C" : C.dim }}>EasyPaisa</button>
-                    <button onClick={() => setWithdrawMethod("jazzcash")} className="flex-1 py-3 text-sm font-bold" style={{ background: withdrawMethod === "jazzcash" ? C.red : C.surface, color: withdrawMethod === "jazzcash" ? "#2A0507" : C.dim }}>JazzCash</button>
-                  </div>
-                  <div className="rounded-2xl p-4" style={{ background: C.surface }}>
-                    <div className="text-xs mb-1" style={{ color: C.dim }}>Account ID</div>
-                    <Field placeholder="Account number" value={wAccountId} onChange={(e) => setWAccountId(e.target.value)} inputMode="numeric" />
-                    <div className="text-xs mb-1" style={{ color: C.dim }}>Account Holder Name</div>
-                    <Field placeholder="Account holder name" value={wAccountHolder} onChange={(e) => setWAccountHolder(e.target.value)} />
-                    <div className="text-xs mb-1" style={{ color: C.dim }}>Withdrawal Coins</div>
-                    <Field placeholder="Withdrawal coins" value={wCoins} onChange={(e) => setWCoins(e.target.value)} inputMode="numeric" />
-                    {withdrawMsg && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{withdrawMsg}</div>}
-                    <button disabled={withdrawBusy} onClick={submitWithdraw} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.teal, color: "#04241C", opacity: withdrawBusy ? 0.6 : 1 }}>{withdrawBusy ? "Sending…" : "Send Payment Request"}</button>
-                  </div>
-                </>
-              )}
-
-              {activeMatch && (
-                <div className="absolute inset-0 z-20 flex flex-col overflow-y-auto" style={{ background: C.bg }}>
-                  <div className="flex items-center justify-between px-0 pt-1 pb-2">
-                    <span className="text-xs font-semibold tracking-wider uppercase" style={{ color: C.violet }}>{activeMatch.type === "cs" ? "Clash Squad" : "Battle Royale"} · {activeMatch.mode}</span>
-                    <button onClick={() => setActiveMatch(null)} className="p-1.5 rounded-full" style={{ background: C.surface }}><X size={16} style={{ color: C.dim }} /></button>
-                  </div>
-                  <h2 className="text-2xl font-black leading-tight mb-2" style={{ color: C.text }}>{activeMatch.title}</h2>
-                  <div className="mb-4"><StatusPill st={statusOf(activeMatch, now)} /></div>
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <div className="rounded-xl p-3" style={{ background: C.surface }}><div className="text-[10px] uppercase tracking-wide" style={{ color: C.dim }}>Map</div><div className="text-sm font-semibold mt-0.5" style={{ color: C.text }}>{activeMatch.map}</div></div>
-                    <div className="rounded-xl p-3" style={{ background: C.surface }}><div className="text-[10px] uppercase tracking-wide" style={{ color: C.dim }}>Entry fee</div><div className="text-lg font-bold" style={{ color: C.amber }}>{activeMatch.entryFee} coins</div></div>
-                    <div className="rounded-xl p-3" style={{ background: C.surface }}><div className="text-[10px] uppercase tracking-wide" style={{ color: C.dim }}>Prize pool</div><div className="text-lg font-bold" style={{ color: C.amber }}>{activeMatch.prize} coins</div></div>
-                    <div className="rounded-xl p-3" style={{ background: C.surface }}><div className="text-[10px] uppercase tracking-wide" style={{ color: C.dim }}>Players</div><div className="text-sm font-semibold mt-0.5" style={{ color: C.text }}>{(joinedPlayers[activeMatch.id] || []).length}/{activeMatch.slots}</div></div>
-                    <div className="rounded-xl p-3" style={{ background: C.surface }}><div className="text-[10px] uppercase tracking-wide" style={{ color: C.dim }}>Starts</div><div className="text-sm font-semibold mt-0.5" style={{ color: C.text }}>{statusOf(activeMatch, now) === "live" ? "Now" : countdown(activeMatch.startsAt - now)}</div></div>
-                  </div>
-                  {activeMatch.rules && (
-                    <div className="rounded-xl p-3 mb-4" style={{ background: C.surface }}>
-                      <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.dim }}>Rules</div>
-                      <div className="text-xs" style={{ color: C.text }}>{activeMatch.rules}</div>
-                    </div>
-                  )}
-
-                  <button onClick={() => setViewPlayersMatch(activeMatch)} className="w-full rounded-xl py-2.5 mb-3 font-bold text-xs" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}>
-                    View players who joined
-                  </button>
-
-                  {joinedIds.includes(activeMatch.id) && statusOf(activeMatch, now) === "live" && (
-                    <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface }}>
-                      <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.amber }}>Room Detail</div>
-                      <div className="flex items-center justify-between py-1.5">
-                        <span className="text-xs" style={{ color: C.dim }}>Room ID</span>
-                        <span className="text-sm font-bold" style={{ color: C.text }}>{roomDetails[activeMatch.id]?.roomId || "Not shared yet"}</span>
-                      </div>
-                      <div className="flex items-center justify-between py-1.5">
-                        <span className="text-xs" style={{ color: C.dim }}>Room Password</span>
-                        <span className="text-sm font-bold" style={{ color: C.text }}>{roomDetails[activeMatch.id]?.roomPassword || "Not shared yet"}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="text-xs mb-3" style={{ color: C.dim }}>Entry fee is deducted immediately once you join and cannot be refunded.</div>
-                  <div className="mt-auto pb-2">
-                    <button
-                      onClick={() => joinedIds.includes(activeMatch.id) ? null : openJoinForm(activeMatch)}
-                      disabled={joinedIds.includes(activeMatch.id)}
-                      className="w-full rounded-xl py-3.5 font-bold text-sm"
-                      style={joinedIds.includes(activeMatch.id) ? { background: C.surfaceAlt, color: C.dim, border: `1px solid ${C.border}` } : { background: C.violet, color: "#fff" }}
-                    >
-                      {joinedIds.includes(activeMatch.id) ? "Already joined" : `Join with ${activeMatch.entryFee} coins`}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {joinFormMatch && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: "rgba(5,4,8,0.85)" }}>
-                  <div className="rounded-2xl p-5 mx-4 w-full max-h-[85%] overflow-y-auto" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-                    <div className="text-lg font-black mb-1" style={{ color: C.text }}>Enter your details</div>
-                    <div className="text-xs mb-4" style={{ color: C.dim }}>Required to join {joinFormMatch.title}</div>
-                    <div className="text-xs font-bold mb-1" style={{ color: C.dim }}>Your info</div>
-                    <Field icon={Gamepad2} placeholder="In-game name" value={joinGameName} onChange={(e) => setJoinGameName(e.target.value)} />
-                    <Field icon={UserCircle2} placeholder="Game UID" value={joinUid} onChange={(e) => setJoinUid(e.target.value)} inputMode="numeric" />
-                    {joinTeammates.map((t, i) => (
-                      <div key={i}>
-                        <div className="text-xs font-bold mb-1 mt-2" style={{ color: C.dim }}>
-                          {joinFormMatch.mode === "duo" ? "Teammate" : `Teammate ${i + 2}`}
-                        </div>
-                        <Field icon={Gamepad2} placeholder="Teammate in-game name" value={t.gameName} onChange={(e) => updateJoinTeammate(i, "gameName", e.target.value)} />
-                        <Field icon={UserCircle2} placeholder="Teammate UID" value={t.uid} onChange={(e) => updateJoinTeammate(i, "uid", e.target.value)} inputMode="numeric" />
-                      </div>
-                    ))}
-                    {joinError && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{joinError}</div>}
-                    <div className="flex gap-2 mt-1">
-                      <button onClick={() => setJoinFormMatch(null)} className="flex-1 rounded-xl py-3 font-bold text-sm" style={{ background: C.surfaceAlt, color: C.text }}>Cancel</button>
-                      <button disabled={joinBusy} onClick={confirmJoin} className="flex-1 rounded-xl py-3 font-bold text-sm" style={{ background: C.violet, color: "#fff", opacity: joinBusy ? 0.6 : 1 }}>{joinBusy ? "Joining…" : "Confirm Join"}</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {viewPlayersMatch && (
-                <div className="absolute inset-0 z-30 flex items-end" style={{ background: "rgba(5,4,8,0.75)" }}>
-                  <div className="w-full rounded-t-3xl p-5" style={{ background: C.surface, border: `1px solid ${C.border}`, maxHeight: "70%", overflowY: "auto" }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-lg font-black" style={{ color: C.text }}>Players joined</span>
-                      <button onClick={() => setViewPlayersMatch(null)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
-                    </div>
-                    {(joinedPlayers[viewPlayersMatch.id] || []).length === 0 && (
-                      <div className="text-sm" style={{ color: C.dim }}>No one has joined with details yet.</div>
+                    {!appStatus.on && (
+                      <Field placeholder="Reason players will see" value={offReason} onChange={(e) => setOffReason(e.target.value)} />
                     )}
-                    {(joinedPlayers[viewPlayersMatch.id] || []).map((team, i) => (
-                      <div key={i} className="py-2.5" style={{ borderBottom: `1px solid ${C.border}` }}>
-                        {viewPlayersMatch.mode !== "solo" && <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: C.violet }}>Team {i + 1}</div>}
-                        {(team.members || []).map((p, j) => (
-                          <div key={j} className="flex items-center justify-between py-0.5">
-                            <span className="text-sm font-semibold" style={{ color: C.text }}>{p.gameName}</span>
-                            <span className="text-xs" style={{ color: C.dim }}>UID: {p.uid}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
                   </div>
-                </div>
+
+                  <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface }}>
+                    <TextArea label="Home banners (one per line)" rows={3} placeholder={adminContent.ads.join("\n")} value={adsText} onChange={(e) => setAdsText(e.target.value)} />
+                    <TextArea label="Tournament rules (one per line)" rows={5} placeholder={adminContent.rules.join("\n")} value={rulesText} onChange={(e) => setRulesText(e.target.value)} />
+                    <Field icon={KeyRound} label="Change Admin Key (leave blank to keep current)" placeholder="New admin key" value={newAdminKey} onChange={(e) => setNewAdminKey(e.target.value)} />
+                    {settingsMsg && <div className="text-xs font-semibold mb-2" style={{ color: C.teal }}>{settingsMsg}</div>}
+                    <button onClick={saveSettings} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.amber, color: "#1a1400" }}>Save Settings</button>
+                  </div>
+                </>
               )}
 
-              {viewRoomMatch && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: "rgba(5,4,8,0.85)" }}>
-                  <div className="rounded-2xl p-5 mx-4 w-full" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-lg font-black" style={{ color: C.text }}>Room Details</span>
-                      <button onClick={() => setViewRoomMatch(null)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
-                    </div>
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-xs" style={{ color: C.dim }}>Room ID</span>
-                      <span className="text-sm font-bold" style={{ color: C.text }}>{roomDetails[viewRoomMatch.id]?.roomId || "Not shared yet"}</span>
-                    </div>
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-xs" style={{ color: C.dim }}>Room Password</span>
-                      <span className="text-sm font-bold" style={{ color: C.text }}>{roomDetails[viewRoomMatch.id]?.roomPassword || "Not shared yet"}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {showRules && (
+              {selectedAccount && (
                 <div className="absolute inset-0 z-30 flex items-end" style={{ background: "rgba(5,4,8,0.75)" }}>
                   <div className="w-full rounded-t-3xl p-5" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-lg font-black" style={{ color: C.text }}>Tournament rules</span>
-                      <button onClick={() => setShowRules(false)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
+                      <span className="text-lg font-black" style={{ color: C.text }}>{selectedAccount.gameName}</span>
+                      <button onClick={() => setSelectedAccount(null)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
                     </div>
-                    <ul className="space-y-2.5 mb-4">
-                      {adminContent.rules.map((r, i) => <li key={i} className="text-sm flex gap-2" style={{ color: C.dim }}><span style={{ color: C.violet }}>•</span>{r}</li>)}
-                    </ul>
-                    <button onClick={() => setShowRules(false)} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.violet, color: "#fff" }}>Got it</button>
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
+                        <div className="text-base font-bold" style={{ color: C.amber }}>{selectedAccount.coins ?? 0}</div>
+                        <div className="text-[10px] uppercase" style={{ color: C.dim }}>Coins</div>
+                      </div>
+                      <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
+                        <div className="text-base font-bold" style={{ color: C.text }}>42</div>
+                        <div className="text-[10px] uppercase" style={{ color: C.dim }}>Kills</div>
+                      </div>
+                      <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
+                        <div className="text-base font-bold" style={{ color: C.text }}>{(selectedAccount.joinedMatchIds || []).length}</div>
+                        <div className="text-[10px] uppercase" style={{ color: C.dim }}>Matches</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs mb-4" style={{ color: C.dim }}>
+                      <Phone size={13} /> {selectedAccount.phone}
+                    </div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <input value={addCoinsVal} onChange={(e) => setAddCoinsVal(e.target.value)} placeholder="Coins to add" inputMode="numeric" className="flex-1 rounded-xl px-3.5 py-3 text-sm outline-none" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }} />
+                      <button onClick={() => addCoinsToAccount(selectedAccount.phone, selectedAccount.coins)} className="px-4 py-3 rounded-xl font-bold text-xs" style={{ background: C.teal, color: "#04241C" }}>Add</button>
+                    </div>
+                    <button onClick={() => removeProfile(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm mb-2" style={{ background: C.surfaceAlt, color: C.text }}>
+                      <UserX size={16} /> Remove profile from app
+                    </button>
+                    <button onClick={() => banAccount(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm" style={{ background: "#3A1620", color: C.red }}>
+                      <Ban size={16} /> Ban this account
+                    </button>
                   </div>
                 </div>
               )}
 
-              {showMinDepositPopup && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: "rgba(5,4,8,0.75)" }}>
-                  <div className="rounded-2xl p-6 flex flex-col items-center text-center mx-4" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-                    <div className="text-lg font-bold mt-1" style={{ color: C.text }}>Minimum deposit is of 100 coins</div>
-                    <button onClick={() => setShowMinDepositPopup(false)} className="mt-4 px-6 py-2 rounded-full text-sm font-bold" style={{ background: C.violet, color: "#fff" }}>Got it</button>
-                  </div>
-                </div>
-              )}
-
-              {successPopup !== null && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: "rgba(5,4,8,0.75)" }}>
-                  <div className="rounded-2xl p-6 flex flex-col items-center text-center mx-4" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
-                    <CheckCircle2 size={40} style={{ color: C.teal }} />
-                    <div className="text-lg font-bold mt-3" style={{ color: C.text }}>Coins are given to you!</div>
-                    <div className="text-sm mt-1" style={{ color: C.dim }}>+{successPopup} coins added to your balance</div>
-                    <button onClick={() => setSuccessPopup(null)} className="mt-4 px-6 py-2 rounded-full text-sm font-bold" style={{ background: C.violet, color: "#fff" }}>Nice</button>
-                  </div>
-                </div>
-              )}
-
-              {joinToast && (
-                <div className="absolute left-0 right-0 bottom-2 z-30 flex justify-center px-4">
-                  <div className="px-4 py-2.5 rounded-full text-xs font-semibold text-center" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}>{joinToast}</div>
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-around py-3" style={{ borderTop: `1px solid ${C.border}`, background: C.bg }}>
-              {[{ id: "home", label: "Home", icon: Home }, { id: "leaderboard", label: "Leaderboard", icon: Trophy }, { id: "account", label: "Account", icon: User }].map(({ id, label, icon: Icon }) => (
-                <button key={id} onClick={() => { setTab(id); if (id === "home") setView("home"); if (id === "account") setAcctView(null); }} className="flex flex-col items-center gap-1">
-                  <Icon size={18} style={{ color: tab === id ? C.violet : C.dim }} />
-                  <span className="text-[10px] font-semibold" style={{ color: tab === id ? C.violet : C.dim }}>{label}</span>
+              {[
+                { id: "home", label: "Matches", icon: Swords },
+                { id: "accounts", label: "Accounts", icon: Users2 },
+                { id: "payments", label: "Payment ID", icon: Wallet2 },
+                { id: "withdrawals", label: "Withdrawals", icon: ArrowUpFromLine },
+                { id: "settings", label: "Settings", icon: SettingsIcon },
+              ].map(({ id, label, icon: Icon }) => (
+                <button key={id} onClick={() => { setTab(id); setManageOpen(false); setManageMode(null); setMatchForm(null); }} className="flex flex-col items-center gap-1">
+                  <Icon size={16} style={{ color: tab === id ? C.violet : C.dim }} />
+                  <span className="text-[9px] font-semibold" style={{ color: tab === id ? C.violet : C.dim }}>{label}</span>
                 </button>
               ))}
             </div>
@@ -1001,4 +531,4 @@ export default function App() {
       </div>
     </div>
   );
-    }
+}
