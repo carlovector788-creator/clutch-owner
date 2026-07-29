@@ -49,7 +49,7 @@ function Header({ title, onBack, right }) {
   return (
     <div className="flex items-center justify-between px-4 pt-3 pb-2">
       <div className="flex items-center gap-2">
-        {onBack && <button onClick={onBack} className="p-1.5 -ml-1.5 rounded-full" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>}
+        {onBack && <button type="button" onClick={onBack} className="p-1.5 -ml-1.5 rounded-full" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>}
         <span className="text-lg font-black tracking-tight" style={{ color: C.text }}>{title}</span>
       </div>
       {right}
@@ -89,13 +89,13 @@ function AdminLogin({ onSubmit, error }) {
           <input value={key} onChange={(e) => setKey(e.target.value)} type="password" className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.text }} />
         </div>
         {error && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{error}</div>}
-        <button onClick={() => onSubmit(key)} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.teal, color: "#04241C" }}>Login</button>
+        <button type="button" onClick={() => onSubmit(key)} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.teal, color: "#04241C" }}>Login</button>
       </div>
     </div>
   );
 }
 
-function MatchForm({ type, mode, editing, onCancel, onSave, onDelete }) {
+function MatchForm({ type, mode, editing, busy, onCancel, onSave, onDelete }) {
   const [title, setTitle] = useState(editing?.title || "");
   const [mapName, setMapName] = useState(editing?.map || "");
   const [slots, setSlots] = useState(editing?.slots?.toString() || "");
@@ -132,7 +132,7 @@ function MatchForm({ type, mode, editing, onCancel, onSave, onDelete }) {
     <div className="absolute inset-0 z-30 flex flex-col overflow-y-auto p-5" style={{ background: C.bg }}>
       <div className="flex items-center justify-between mb-4">
         <span className="text-lg font-black" style={{ color: C.text }}>{editing ? "Edit Match" : "Add Match"}</span>
-        <button onClick={onCancel} className="p-1.5 rounded-full" style={{ background: C.surface }}><X size={16} style={{ color: C.dim }} /></button>
+        <button type="button" onClick={onCancel} className="p-1.5 rounded-full" style={{ background: C.surface }}><X size={16} style={{ color: C.dim }} /></button>
       </div>
       <div className="text-xs mb-3 px-3 py-2 rounded-lg inline-block" style={{ background: C.violetDim, color: C.violet }}>{type === "cs" ? "CS" : "BR"} · {mode[0].toUpperCase() + mode.slice(1)}</div>
 
@@ -161,9 +161,9 @@ function MatchForm({ type, mode, editing, onCancel, onSave, onDelete }) {
 
       {err && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{err}</div>}
 
-      <button onClick={submit} className="w-full rounded-xl py-3 font-bold text-sm mb-2" style={{ background: C.violet, color: "#fff" }}>{editing ? "Save Changes" : "Create Match"}</button>
+      <button type="button" disabled={busy} onClick={submit} className="w-full rounded-xl py-3 font-bold text-sm mb-2 disabled:opacity-50" style={{ background: C.violet, color: "#fff" }}>{busy ? "Saving…" : editing ? "Save Changes" : "Create Match"}</button>
       {editing && (
-        <button onClick={() => onDelete(editing.id)} className="w-full rounded-xl py-3 font-bold text-sm mb-6" style={{ background: "#3A1620", color: C.red }}>Delete Match</button>
+        <button type="button" disabled={busy} onClick={() => onDelete(editing.id)} className="w-full rounded-xl py-3 font-bold text-sm mb-6 disabled:opacity-50" style={{ background: "#3A1620", color: C.red }}>Delete Match</button>
       )}
     </div>
   );
@@ -187,7 +187,7 @@ export default function OwnerApp() {
   const [adminContent, setAdminContentState] = useState({ ads: [], rules: [] });
   const [appStatus, setAppStatus] = useState({ on: true, reason: "" });
 
-  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [selectedAccountPhone, setSelectedAccountPhone] = useState(null);
   const [addCoinsVal, setAddCoinsVal] = useState("");
 
   const [payName, setPayName] = useState("");
@@ -198,6 +198,16 @@ export default function OwnerApp() {
   const [newAdminKey, setNewAdminKey] = useState("");
   const [offReason, setOffReason] = useState("");
   const [settingsMsg, setSettingsMsg] = useState(null);
+
+  // Generic busy + toast state so every button gives visible feedback
+  // and duplicate clicks are prevented.
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  function showToast(type, text) {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 2600);
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 1400);
@@ -244,52 +254,150 @@ export default function OwnerApp() {
     }
   }
 
-  async function saveMatch(data) {
-    const id = matchForm.editing ? matchForm.editing.id : `${data.type}-${Date.now()}`;
-    await setDoc(doc(db, "matches", id), { ...data, createdAt: matchForm.editing?.createdAt || Date.now() });
-    setMatchForm(null);
-  }
-  async function deleteMatch(id) {
-    await deleteDoc(doc(db, "matches", id));
-    await deleteDoc(doc(db, "joinedPlayers", id)).catch(() => {});
-    await deleteDoc(doc(db, "roomDetails", id)).catch(() => {});
-    setMatchForm(null);
-  }
+  // ---- FIX: selectedAccount is now derived live from the `accounts` list
+  // (instead of a frozen snapshot), so coin changes reflect instantly. ----
+  const selectedAccount = selectedAccountPhone
+    ? accounts.find((a) => a.phone === selectedAccountPhone) || null
+    : null;
 
-  async function removeProfile(phone) {
-    await deleteDoc(doc(db, "accounts", phone));
-    setSelectedAccount(null);
-  }
-  async function banAccount(phone) {
-    await updateDoc(doc(db, "accounts", phone), { banned: true });
-    setSelectedAccount(null);
-  }
-  async function addCoinsToAccount(phone, current) {
-    const amt = parseInt(addCoinsVal, 10);
-    if (!amt) return;
-    await updateDoc(doc(db, "accounts", phone), { coins: (current || 0) + amt });
+  // ---- FIX: switching tabs now always closes any open account sheet /
+  // match form / sub-menu, so a leftover overlay can never block buttons
+  // on Settings, Payment ID, etc. ----
+  function goToTab(id) {
+    setTab(id);
+    setManageOpen(false);
+    setManageMode(null);
+    setMatchForm(null);
+    setSelectedAccountPhone(null);
     setAddCoinsVal("");
   }
 
+  async function saveMatch(data) {
+    setBusy(true);
+    try {
+      const id = matchForm.editing ? matchForm.editing.id : `${data.type}-${Date.now()}`;
+      await setDoc(doc(db, "matches", id), { ...data, createdAt: matchForm.editing?.createdAt || Date.now() });
+      setMatchForm(null);
+      showToast("success", matchForm.editing ? "Match updated." : "Match created.");
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not save match: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deleteMatch(id) {
+    setBusy(true);
+    try {
+      await deleteDoc(doc(db, "matches", id));
+      await deleteDoc(doc(db, "joinedPlayers", id)).catch(() => {});
+      await deleteDoc(doc(db, "roomDetails", id)).catch(() => {});
+      setMatchForm(null);
+      showToast("success", "Match deleted.");
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not delete match: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeProfile(phone) {
+    setBusy(true);
+    try {
+      await deleteDoc(doc(db, "accounts", phone));
+      setSelectedAccountPhone(null);
+      showToast("success", "Profile removed.");
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not remove profile: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function banAccount(phone) {
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, "accounts", phone), { banned: true });
+      setSelectedAccountPhone(null);
+      showToast("success", "Account banned.");
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not ban account: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function addCoinsToAccount(phone, current) {
+    const amt = parseInt(addCoinsVal, 10);
+    if (!phone || Number.isNaN(amt) || amt <= 0) {
+      showToast("error", "Enter a valid number of coins first.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, "accounts", phone), { coins: (current || 0) + amt });
+      setAddCoinsVal("");
+      showToast("success", `${amt} coins added.`);
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not add coins: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function createPaymentCode() {
-    if (!payName.trim() || !payCoins) return;
-    await setDoc(doc(db, "paymentCodes", payName.trim().toUpperCase()), { coins: parseInt(payCoins, 10), createdAt: Date.now() });
-    setPayName(""); setPayCoins("");
+    const amt = parseInt(payCoins, 10);
+    if (!payName.trim() || Number.isNaN(amt) || amt <= 0) {
+      showToast("error", "Enter a valid ID name and coin amount.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await setDoc(doc(db, "paymentCodes", payName.trim().toUpperCase()), { coins: amt, createdAt: Date.now() });
+      setPayName(""); setPayCoins("");
+      showToast("success", "Payment ID created.");
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not create payment ID: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveSettings() {
-    const ads = adsText.split("\n").map((s) => s.trim()).filter(Boolean);
-    const rulesArr = rulesText.split("\n").map((s) => s.trim()).filter(Boolean);
-    await setDoc(doc(db, "adminContent", "home"), { ads: ads.length ? ads : adminContent.ads, rules: rulesArr.length ? rulesArr : adminContent.rules });
-    if (newAdminKey.trim()) {
-      await setDoc(doc(db, "settings", "adminAuth"), { key: newAdminKey.trim() });
+    setBusy(true);
+    try {
+      const ads = adsText.split("\n").map((s) => s.trim()).filter(Boolean);
+      const rulesArr = rulesText.split("\n").map((s) => s.trim()).filter(Boolean);
+      await setDoc(doc(db, "adminContent", "home"), { ads: ads.length ? ads : adminContent.ads, rules: rulesArr.length ? rulesArr : adminContent.rules });
+      if (newAdminKey.trim()) {
+        await setDoc(doc(db, "settings", "adminAuth"), { key: newAdminKey.trim() });
+        setNewAdminKey("");
+      }
+      setSettingsMsg("Saved.");
+      showToast("success", "Settings saved.");
+      setTimeout(() => setSettingsMsg(null), 2000);
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not save settings: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
     }
-    setSettingsMsg("Saved.");
-    setTimeout(() => setSettingsMsg(null), 2000);
   }
 
   async function toggleAppStatus(on) {
-    await setDoc(doc(db, "settings", "appStatus"), { on, reason: on ? "" : offReason.trim() });
+    setBusy(true);
+    try {
+      await setDoc(doc(db, "settings", "appStatus"), { on, reason: on ? "" : offReason.trim() });
+      showToast("success", `App turned ${on ? "ON" : "OFF"}.`);
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not update app status: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const withdrawRequests = [];
@@ -300,11 +408,20 @@ export default function OwnerApp() {
   });
 
   async function resolveWithdraw(phone, idx, approve) {
-    const acc = accounts.find((a) => a.phone === phone);
-    if (!acc) return;
-    const history = [...(acc.withdrawHistory || [])];
-    history[idx] = { ...history[idx], status: approve ? "Approved" : "Rejected" };
-    await updateDoc(doc(db, "accounts", phone), { withdrawHistory: history });
+    setBusy(true);
+    try {
+      const acc = accounts.find((a) => a.phone === phone);
+      if (!acc) return;
+      const history = [...(acc.withdrawHistory || [])];
+      history[idx] = { ...history[idx], status: approve ? "Approved" : "Rejected" };
+      await updateDoc(doc(db, "accounts", phone), { withdrawHistory: history });
+      showToast("success", approve ? "Withdrawal approved." : "Withdrawal rejected.");
+    } catch (e) {
+      console.error(e);
+      showToast("error", "Could not update withdrawal: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const filteredMatches = matches.filter((m) => m.type === matchType && m.mode === manageMode);
@@ -312,6 +429,21 @@ export default function OwnerApp() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#050408" }}>
       <div className="relative w-full overflow-hidden flex flex-col" style={{ maxWidth: 390, height: 780, background: C.bg, borderRadius: 32, border: `1px solid ${C.border}`, boxShadow: "0 30px 80px rgba(0,0,0,0.6)" }}>
+
+        {/* Global toast — shows success/error for every action so a click
+            never silently "does nothing" again. */}
+        {toast && (
+          <div
+            className="absolute top-3 left-3 right-3 z-50 rounded-xl px-4 py-3 text-xs font-bold text-center shadow-lg"
+            style={{
+              background: toast.type === "success" ? "#12332E" : "#3A1620",
+              color: toast.type === "success" ? C.teal : C.red,
+              border: `1px solid ${C.border}`,
+            }}
+          >
+            {toast.text}
+          </div>
+        )}
 
         {!booted && <Splash />}
         {booted && !authed && <AdminLogin onSubmit={handleLogin} error={authError} />}
@@ -333,7 +465,7 @@ export default function OwnerApp() {
                     <Power size={18} style={{ color: appStatus.on ? C.teal : C.red }} />
                     <span className="text-sm font-bold" style={{ color: appStatus.on ? C.teal : C.red }}>App is currently {appStatus.on ? "ON" : "OFF"}</span>
                   </div>
-                  <button onClick={() => { setMatchType("cs"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.violet}` }}>
+                  <button type="button" onClick={() => { setMatchType("cs"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.violet}` }}>
                     <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${C.violet}22` }}><Swords size={20} style={{ color: C.violet }} /></span>
                     <span className="flex-1 text-left">
                       <div className="text-[15px] font-bold" style={{ color: C.text }}>CS Matches</div>
@@ -341,7 +473,7 @@ export default function OwnerApp() {
                     </span>
                     <Pencil size={16} style={{ color: C.dim }} />
                   </button>
-                  <button onClick={() => { setMatchType("br"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.teal}` }}>
+                  <button type="button" onClick={() => { setMatchType("br"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.teal}` }}>
                     <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${C.teal}22` }}><Crosshair size={20} style={{ color: C.teal }} /></span>
                     <span className="flex-1 text-left">
                       <div className="text-[15px] font-bold" style={{ color: C.text }}>BR Matches</div>
@@ -360,7 +492,7 @@ export default function OwnerApp() {
                     { id: "duo", label: "Duo", sub: "2 players per team", icon: Users },
                     { id: "squad", label: "Squad", sub: "4 players per team", icon: Users },
                   ].map(({ id, label, sub, icon: Icon }) => (
-                    <button key={id} onClick={() => setManageMode(id)} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
+                    <button type="button" key={id} onClick={() => setManageMode(id)} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
                       <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: C.violetDim }}><Icon size={20} style={{ color: C.violet }} /></span>
                       <span className="flex-1 text-left">
                         <div className="text-[15px] font-bold" style={{ color: C.text }}>{label}</div>
@@ -375,11 +507,11 @@ export default function OwnerApp() {
               {tab === "home" && manageOpen && manageMode && !matchForm && (
                 <>
                   <Header title={`${matchType === "cs" ? "CS" : "BR"} · ${manageMode[0].toUpperCase() + manageMode.slice(1)}`} onBack={() => setManageMode(null)} right={
-                    <button onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: null })} className="p-2 rounded-full" style={{ background: C.violetDim }}><Plus size={16} style={{ color: C.violet }} /></button>
+                    <button type="button" onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: null })} className="p-2 rounded-full" style={{ background: C.violetDim }}><Plus size={16} style={{ color: C.violet }} /></button>
                   } />
                   {filteredMatches.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No matches yet — tap + to add one.</div>}
                   {filteredMatches.map((m) => (
-                    <button key={m.id} onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: m })} className="w-full text-left rounded-2xl p-3.5 mb-3 flex items-center justify-between" style={{ background: C.surface }}>
+                    <button type="button" key={m.id} onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: m })} className="w-full text-left rounded-2xl p-3.5 mb-3 flex items-center justify-between" style={{ background: C.surface }}>
                       <div>
                         <div className="text-sm font-bold" style={{ color: C.text }}>{m.title}</div>
                         <div className="text-xs" style={{ color: C.dim }}>{m.map} · {m.slots} slots · {new Date(m.startsAt).toLocaleString()}</div>
@@ -391,14 +523,14 @@ export default function OwnerApp() {
               )}
 
               {matchForm && (
-                <MatchForm type={matchForm.type} mode={matchForm.mode} editing={matchForm.editing} onCancel={() => setMatchForm(null)} onSave={saveMatch} onDelete={deleteMatch} />
+                <MatchForm type={matchForm.type} mode={matchForm.mode} editing={matchForm.editing} busy={busy} onCancel={() => setMatchForm(null)} onSave={saveMatch} onDelete={deleteMatch} />
               )}
 
               {tab === "accounts" && (
                 <>
                   <Header title="Accounts" />
                   {accounts.map((acc) => (
-                    <button key={acc.phone} onClick={() => setSelectedAccount(acc)} className="w-full flex items-center justify-between rounded-2xl p-3.5 mb-3" style={{ background: C.surface }}>
+                    <button type="button" key={acc.phone} onClick={() => setSelectedAccountPhone(acc.phone)} className="w-full flex items-center justify-between rounded-2xl p-3.5 mb-3" style={{ background: C.surface }}>
                       <div className="text-left">
                         <div className="text-sm font-bold" style={{ color: C.text }}>{acc.gameName} {acc.banned && <span style={{ color: C.red }}>(Banned)</span>}</div>
                         <div className="text-xs" style={{ color: C.dim }}>{acc.phone}</div>
@@ -415,7 +547,7 @@ export default function OwnerApp() {
                   <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface }}>
                     <Field label="Payment ID name" placeholder='e.g. "99989"' value={payName} onChange={(e) => setPayName(e.target.value)} />
                     <Field label="Coins for this ID" placeholder="e.g. 200" value={payCoins} onChange={(e) => setPayCoins(e.target.value)} inputMode="numeric" />
-                    <button onClick={createPaymentCode} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.violet, color: "#fff" }}>Create</button>
+                    <button type="button" disabled={busy} onClick={createPaymentCode} className="w-full rounded-xl py-3 font-bold text-sm disabled:opacity-50" style={{ background: C.violet, color: "#fff" }}>{busy ? "Creating…" : "Create"}</button>
                   </div>
                   <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.dim }}>Recent Payment IDs</div>
                   <div className="rounded-2xl overflow-hidden" style={{ background: C.surface }}>
@@ -441,8 +573,8 @@ export default function OwnerApp() {
                       <div className="text-xs mb-1" style={{ color: C.dim }}>Account: <span style={{ color: C.text }}>{w.accountHolder} — {w.accountId}</span></div>
                       <div className="text-sm font-bold mb-3" style={{ color: C.amber }}>{w.amount} coins</div>
                       <div className="flex gap-2">
-                        <button onClick={() => resolveWithdraw(w.phone, w.idx, false)} className="flex-1 rounded-xl py-2.5 font-bold text-xs" style={{ background: "#3A1620", color: C.red }}>Reject</button>
-                        <button onClick={() => resolveWithdraw(w.phone, w.idx, true)} className="flex-1 rounded-xl py-2.5 font-bold text-xs" style={{ background: "#12332E", color: C.teal }}>Approve</button>
+                        <button type="button" disabled={busy} onClick={() => resolveWithdraw(w.phone, w.idx, false)} className="flex-1 rounded-xl py-2.5 font-bold text-xs disabled:opacity-50" style={{ background: "#3A1620", color: C.red }}>Reject</button>
+                        <button type="button" disabled={busy} onClick={() => resolveWithdraw(w.phone, w.idx, true)} className="flex-1 rounded-xl py-2.5 font-bold text-xs disabled:opacity-50" style={{ background: "#12332E", color: C.teal }}>Approve</button>
                       </div>
                     </div>
                   ))}
@@ -455,7 +587,7 @@ export default function OwnerApp() {
                   <div className="rounded-2xl p-4 mb-4" style={{ background: appStatus.on ? "#12332E" : "#3A1620" }}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-bold" style={{ color: appStatus.on ? C.teal : C.red }}>App is {appStatus.on ? "ON" : "OFF"}</span>
-                      <button onClick={() => toggleAppStatus(!appStatus.on)} className="px-4 py-2 rounded-full text-xs font-bold" style={{ background: appStatus.on ? C.red : C.teal, color: "#000" }}>{appStatus.on ? "Turn OFF" : "Turn ON"}</button>
+                      <button type="button" disabled={busy} onClick={() => toggleAppStatus(!appStatus.on)} className="px-4 py-2 rounded-full text-xs font-bold disabled:opacity-50" style={{ background: appStatus.on ? C.red : C.teal, color: "#000" }}>{busy ? "…" : appStatus.on ? "Turn OFF" : "Turn ON"}</button>
                     </div>
                     {!appStatus.on && (
                       <Field placeholder="Reason players will see" value={offReason} onChange={(e) => setOffReason(e.target.value)} />
@@ -467,7 +599,7 @@ export default function OwnerApp() {
                     <TextArea label="Tournament rules (one per line)" rows={5} placeholder={adminContent.rules.join("\n")} value={rulesText} onChange={(e) => setRulesText(e.target.value)} />
                     <Field icon={KeyRound} label="Change Admin Key (leave blank to keep current)" placeholder="New admin key" value={newAdminKey} onChange={(e) => setNewAdminKey(e.target.value)} />
                     {settingsMsg && <div className="text-xs font-semibold mb-2" style={{ color: C.teal }}>{settingsMsg}</div>}
-                    <button onClick={saveSettings} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.amber, color: "#1a1400" }}>Save Settings</button>
+                    <button type="button" disabled={busy} onClick={saveSettings} className="w-full rounded-xl py-3 font-bold text-sm disabled:opacity-50" style={{ background: C.amber, color: "#1a1400" }}>{busy ? "Saving…" : "Save Settings"}</button>
                   </div>
                 </>
               )}
@@ -477,7 +609,7 @@ export default function OwnerApp() {
                   <div className="w-full rounded-t-3xl p-5" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-lg font-black" style={{ color: C.text }}>{selectedAccount.gameName}</span>
-                      <button onClick={() => setSelectedAccount(null)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
+                      <button type="button" onClick={() => setSelectedAccountPhone(null)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
                     </div>
                     <div className="grid grid-cols-3 gap-2 mb-4">
                       <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
@@ -485,7 +617,7 @@ export default function OwnerApp() {
                         <div className="text-[10px] uppercase" style={{ color: C.dim }}>Coins</div>
                       </div>
                       <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
-                        <div className="text-base font-bold" style={{ color: C.text }}>42</div>
+                        <div className="text-base font-bold" style={{ color: C.text }}>{selectedAccount.kills ?? 0}</div>
                         <div className="text-[10px] uppercase" style={{ color: C.dim }}>Kills</div>
                       </div>
                       <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
@@ -498,12 +630,12 @@ export default function OwnerApp() {
                     </div>
                     <div className="flex items-center gap-2 mb-4">
                       <input value={addCoinsVal} onChange={(e) => setAddCoinsVal(e.target.value)} placeholder="Coins to add" inputMode="numeric" className="flex-1 rounded-xl px-3.5 py-3 text-sm outline-none" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }} />
-                      <button onClick={() => addCoinsToAccount(selectedAccount.phone, selectedAccount.coins)} className="px-4 py-3 rounded-xl font-bold text-xs" style={{ background: C.teal, color: "#04241C" }}>Add</button>
+                      <button type="button" disabled={busy} onClick={() => addCoinsToAccount(selectedAccount.phone, selectedAccount.coins)} className="px-4 py-3 rounded-xl font-bold text-xs disabled:opacity-50" style={{ background: C.teal, color: "#04241C" }}>{busy ? "…" : "Add"}</button>
                     </div>
-                    <button onClick={() => removeProfile(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm mb-2" style={{ background: C.surfaceAlt, color: C.text }}>
+                    <button type="button" disabled={busy} onClick={() => removeProfile(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm mb-2 disabled:opacity-50" style={{ background: C.surfaceAlt, color: C.text }}>
                       <UserX size={16} /> Remove profile from app
                     </button>
-                    <button onClick={() => banAccount(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm" style={{ background: "#3A1620", color: C.red }}>
+                    <button type="button" disabled={busy} onClick={() => banAccount(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm disabled:opacity-50" style={{ background: "#3A1620", color: C.red }}>
                       <Ban size={16} /> Ban this account
                     </button>
                   </div>
@@ -520,7 +652,7 @@ export default function OwnerApp() {
                 { id: "withdrawals", label: "Withdrawals", icon: ArrowUpFromLine },
                 { id: "settings", label: "Settings", icon: SettingsIcon },
               ].map(({ id, label, icon: Icon }) => (
-                <button key={id} onClick={() => { setTab(id); setManageOpen(false); setManageMode(null); setMatchForm(null); }} className="flex flex-col items-center gap-1">
+                <button type="button" key={id} onClick={() => goToTab(id)} className="flex flex-col items-center gap-1">
                   <Icon size={16} style={{ color: tab === id ? C.violet : C.dim }} />
                   <span className="text-[9px] font-semibold" style={{ color: tab === id ? C.violet : C.dim }}>{label}</span>
                 </button>
