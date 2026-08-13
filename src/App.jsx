@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Flame, KeyRound, ChevronLeft, ChevronRight, X, Plus, Trash2,
   Swords, Crosshair, Pencil, Users2, Wallet2, Settings as SettingsIcon,
-  ArrowUpFromLine, Ban, UserX, Coins, Phone, Power, User, Users,
+  ArrowUpFromLine, Ban, UserX, Coins, Phone, Power, User, Users, Target,
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -49,7 +49,7 @@ function Header({ title, onBack, right }) {
   return (
     <div className="flex items-center justify-between px-4 pt-3 pb-2">
       <div className="flex items-center gap-2">
-        {onBack && <button type="button" onClick={onBack} className="p-1.5 -ml-1.5 rounded-full" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>}
+        {onBack && <button onClick={onBack} className="p-1.5 -ml-1.5 rounded-full" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>}
         <span className="text-lg font-black tracking-tight" style={{ color: C.text }}>{title}</span>
       </div>
       {right}
@@ -89,13 +89,13 @@ function AdminLogin({ onSubmit, error }) {
           <input value={key} onChange={(e) => setKey(e.target.value)} type="password" className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.text }} />
         </div>
         {error && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{error}</div>}
-        <button type="button" onClick={() => onSubmit(key)} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.teal, color: "#04241C" }}>Login</button>
+        <button onClick={() => onSubmit(key)} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.teal, color: "#04241C" }}>Login</button>
       </div>
     </div>
   );
 }
 
-function MatchForm({ type, mode, editing, busy, onCancel, onSave, onDelete }) {
+function MatchForm({ type, mode, editing, onCancel, onSave, onDelete }) {
   const [title, setTitle] = useState(editing?.title || "");
   const [mapName, setMapName] = useState(editing?.map || "");
   const [slots, setSlots] = useState(editing?.slots?.toString() || "");
@@ -107,32 +107,52 @@ function MatchForm({ type, mode, editing, busy, onCancel, onSave, onDelete }) {
   const [roomId, setRoomId] = useState(editing?.roomId || "");
   const [roomPassword, setRoomPassword] = useState(editing?.roomPassword || "");
   const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  function submit() {
+  async function submit() {
     if (!title.trim() || !mapName.trim() || !slots || !entryFee || !prize || !dateVal || !timeVal) {
       setErr("Please fill in every required field.");
       return;
     }
+    setErr(null);
+    setBusy(true);
     const startsAt = new Date(`${dateVal}T${timeVal}`).getTime();
-    onSave({
-      type, mode,
-      title: title.trim(),
-      map: mapName.trim(),
-      slots: parseInt(slots, 10),
-      entryFee: parseInt(entryFee, 10),
-      prize: parseInt(prize, 10),
-      rules: rules.trim(),
-      startsAt,
-      roomId: roomId.trim(),
-      roomPassword: roomPassword.trim(),
-    });
+    try {
+      await onSave({
+        type, mode,
+        title: title.trim(),
+        map: mapName.trim(),
+        slots: parseInt(slots, 10),
+        entryFee: parseInt(entryFee, 10),
+        prize: parseInt(prize, 10),
+        rules: rules.trim(),
+        startsAt,
+        roomId: roomId.trim(),
+        roomPassword: roomPassword.trim(),
+      });
+    } catch (e) {
+      console.error("Save match failed:", e);
+      setErr(`Couldn't save: ${e && e.message ? e.message : "unknown error"}`);
+    }
+    setBusy(false);
+  }
+
+  async function handleDelete() {
+    setBusy(true);
+    try {
+      await onDelete(editing.id);
+    } catch (e) {
+      console.error("Delete match failed:", e);
+      setErr(`Couldn't delete: ${e && e.message ? e.message : "unknown error"}`);
+    }
+    setBusy(false);
   }
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col overflow-y-auto p-5" style={{ background: C.bg }}>
       <div className="flex items-center justify-between mb-4">
         <span className="text-lg font-black" style={{ color: C.text }}>{editing ? "Edit Match" : "Add Match"}</span>
-        <button type="button" onClick={onCancel} className="p-1.5 rounded-full" style={{ background: C.surface }}><X size={16} style={{ color: C.dim }} /></button>
+        <button onClick={onCancel} className="p-1.5 rounded-full" style={{ background: C.surface }}><X size={16} style={{ color: C.dim }} /></button>
       </div>
       <div className="text-xs mb-3 px-3 py-2 rounded-lg inline-block" style={{ background: C.violetDim, color: C.violet }}>{type === "cs" ? "CS" : "BR"} · {mode[0].toUpperCase() + mode.slice(1)}</div>
 
@@ -161,9 +181,9 @@ function MatchForm({ type, mode, editing, busy, onCancel, onSave, onDelete }) {
 
       {err && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{err}</div>}
 
-      <button type="button" disabled={busy} onClick={submit} className="w-full rounded-xl py-3 font-bold text-sm mb-2 disabled:opacity-50" style={{ background: C.violet, color: "#fff" }}>{busy ? "Saving…" : editing ? "Save Changes" : "Create Match"}</button>
+      <button disabled={busy} onClick={submit} className="w-full rounded-xl py-3 font-bold text-sm mb-2" style={{ background: C.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : (editing ? "Save Changes" : "Create Match")}</button>
       {editing && (
-        <button type="button" disabled={busy} onClick={() => onDelete(editing.id)} className="w-full rounded-xl py-3 font-bold text-sm mb-6 disabled:opacity-50" style={{ background: "#3A1620", color: C.red }}>Delete Match</button>
+        <button disabled={busy} onClick={handleDelete} className="w-full rounded-xl py-3 font-bold text-sm mb-6" style={{ background: "#3A1620", color: C.red, opacity: busy ? 0.6 : 1 }}>{busy ? "Deleting…" : "Delete Match"}</button>
       )}
     </div>
   );
@@ -186,28 +206,36 @@ export default function OwnerApp() {
   const [paymentCodes, setPaymentCodes] = useState([]);
   const [adminContent, setAdminContentState] = useState({ ads: [], rules: [] });
   const [appStatus, setAppStatus] = useState({ on: true, reason: "" });
+  const [joinedPlayersMap, setJoinedPlayersMap] = useState({});
 
-  const [selectedAccountPhone, setSelectedAccountPhone] = useState(null);
+  const [selectedPhone, setSelectedPhone] = useState(null);
   const [addCoinsVal, setAddCoinsVal] = useState("");
+  const [accountMsg, setAccountMsg] = useState(null);
+  const [accountBusy, setAccountBusy] = useState(false);
 
   const [payName, setPayName] = useState("");
   const [payCoins, setPayCoins] = useState("");
+  const [payMsg, setPayMsg] = useState(null);
+  const [payBusy, setPayBusy] = useState(false);
+
+  const [statusMsg, setStatusMsg] = useState(null);
+  const [statusBusy, setStatusBusy] = useState(false);
 
   const [adsText, setAdsText] = useState("");
   const [rulesText, setRulesText] = useState("");
   const [newAdminKey, setNewAdminKey] = useState("");
   const [offReason, setOffReason] = useState("");
   const [settingsMsg, setSettingsMsg] = useState(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
 
-  // Generic busy + toast state so every button gives visible feedback
-  // and duplicate clicks are prevented.
-  const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState(null);
+  // NEW: results tab state
+  const [resultsMatch, setResultsMatch] = useState(null);
+  const [resultInputs, setResultInputs] = useState({});
+  const [resultBusy, setResultBusy] = useState({});
+  const [resultMsg, setResultMsg] = useState({});
 
-  function showToast(type, text) {
-    setToast({ type, text });
-    setTimeout(() => setToast(null), 2600);
-  }
+  const [withdrawBusy, setWithdrawBusy] = useState(null);
+  const [withdrawMsg, setWithdrawMsg] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 1400);
@@ -218,31 +246,36 @@ export default function OwnerApp() {
     const unsubAuth = onSnapshot(doc(db, "settings", "adminAuth"), (d) => {
       if (d.exists()) setAdminKey(d.data().key || DEFAULT_ADMIN_KEY);
       else setAdminKey(DEFAULT_ADMIN_KEY);
-    });
+    }, (e) => console.error("adminAuth listener error:", e));
     const unsubStatus = onSnapshot(doc(db, "settings", "appStatus"), (d) => {
       if (d.exists()) setAppStatus({ on: d.data().on !== false, reason: d.data().reason || "" });
-    });
+    }, (e) => console.error("appStatus listener error:", e));
     const unsubMatches = onSnapshot(collection(db, "matches"), (snap) => {
       const list = [];
       snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
       list.sort((a, b) => a.startsAt - b.startsAt);
       setMatches(list);
-    });
+    }, (e) => console.error("matches listener error:", e));
     const unsubAccounts = onSnapshot(collection(db, "accounts"), (snap) => {
       const list = [];
       snap.forEach((d) => list.push({ phone: d.id, ...d.data() }));
       setAccounts(list);
-    });
+    }, (e) => console.error("accounts listener error:", e));
     const unsubPayments = onSnapshot(collection(db, "paymentCodes"), (snap) => {
       const list = [];
       snap.forEach((d) => list.push({ code: d.id, ...d.data() }));
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setPaymentCodes(list);
-    });
+    }, (e) => console.error("paymentCodes listener error:", e));
     const unsubAdmin = onSnapshot(doc(db, "adminContent", "home"), (d) => {
       if (d.exists()) setAdminContentState({ ads: d.data().ads || [], rules: d.data().rules || [] });
-    });
-    return () => { unsubAuth(); unsubStatus(); unsubMatches(); unsubAccounts(); unsubPayments(); unsubAdmin(); };
+    }, (e) => console.error("adminContent listener error:", e));
+    const unsubJoined = onSnapshot(collection(db, "joinedPlayers"), (snap) => {
+      const m = {};
+      snap.forEach((d) => { m[d.id] = d.data().teams || []; });
+      setJoinedPlayersMap(m);
+    }, (e) => console.error("joinedPlayers listener error:", e));
+    return () => { unsubAuth(); unsubStatus(); unsubMatches(); unsubAccounts(); unsubPayments(); unsubAdmin(); unsubJoined(); };
   }, []);
 
   function handleLogin(key) {
@@ -254,120 +287,76 @@ export default function OwnerApp() {
     }
   }
 
-  // ---- FIX: selectedAccount is now derived live from the `accounts` list
-  // (instead of a frozen snapshot), so coin changes reflect instantly. ----
-  const selectedAccount = selectedAccountPhone
-    ? accounts.find((a) => a.phone === selectedAccountPhone) || null
-    : null;
-
-  // ---- FIX: switching tabs now always closes any open account sheet /
-  // match form / sub-menu, so a leftover overlay can never block buttons
-  // on Settings, Payment ID, etc. ----
-  function goToTab(id) {
-    setTab(id);
-    setManageOpen(false);
-    setManageMode(null);
-    setMatchForm(null);
-    setSelectedAccountPhone(null);
-    setAddCoinsVal("");
-  }
-
   async function saveMatch(data) {
-    setBusy(true);
-    try {
-      const id = matchForm.editing ? matchForm.editing.id : `${data.type}-${Date.now()}`;
-      await setDoc(doc(db, "matches", id), { ...data, createdAt: matchForm.editing?.createdAt || Date.now() });
-      setMatchForm(null);
-      showToast("success", matchForm.editing ? "Match updated." : "Match created.");
-    } catch (e) {
-      console.error(e);
-      showToast("error", "Could not save match: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
-    }
+    const id = matchForm.editing ? matchForm.editing.id : `${data.type}-${Date.now()}`;
+    await setDoc(doc(db, "matches", id), { ...data, createdAt: matchForm.editing?.createdAt || Date.now() });
+    setMatchForm(null);
   }
   async function deleteMatch(id) {
-    setBusy(true);
-    try {
-      await deleteDoc(doc(db, "matches", id));
-      await deleteDoc(doc(db, "joinedPlayers", id)).catch(() => {});
-      await deleteDoc(doc(db, "roomDetails", id)).catch(() => {});
-      setMatchForm(null);
-      showToast("success", "Match deleted.");
-    } catch (e) {
-      console.error(e);
-      showToast("error", "Could not delete match: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
-    }
+    await deleteDoc(doc(db, "matches", id));
+    await deleteDoc(doc(db, "joinedPlayers", id)).catch(() => {});
+    await deleteDoc(doc(db, "roomDetails", id)).catch(() => {});
+    setMatchForm(null);
   }
 
   async function removeProfile(phone) {
-    setBusy(true);
+    setAccountBusy(true);
+    setAccountMsg(null);
     try {
       await deleteDoc(doc(db, "accounts", phone));
-      setSelectedAccountPhone(null);
-      showToast("success", "Profile removed.");
+      setSelectedPhone(null);
     } catch (e) {
-      console.error(e);
-      showToast("error", "Could not remove profile: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
+      console.error("Remove profile failed:", e);
+      setAccountMsg(`Couldn't remove: ${e && e.message ? e.message : "unknown error"}`);
     }
+    setAccountBusy(false);
   }
   async function banAccount(phone) {
-    setBusy(true);
+    setAccountBusy(true);
+    setAccountMsg(null);
     try {
       await updateDoc(doc(db, "accounts", phone), { banned: true });
-      setSelectedAccountPhone(null);
-      showToast("success", "Account banned.");
+      setSelectedPhone(null);
     } catch (e) {
-      console.error(e);
-      showToast("error", "Could not ban account: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
+      console.error("Ban failed:", e);
+      setAccountMsg(`Couldn't ban: ${e && e.message ? e.message : "unknown error"}`);
     }
+    setAccountBusy(false);
   }
   async function addCoinsToAccount(phone, current) {
     const amt = parseInt(addCoinsVal, 10);
-    if (!phone || Number.isNaN(amt) || amt <= 0) {
-      showToast("error", "Enter a valid number of coins first.");
-      return;
-    }
-    setBusy(true);
+    if (!amt) { setAccountMsg("Enter a number of coins first."); return; }
+    setAccountBusy(true);
+    setAccountMsg(null);
     try {
       await updateDoc(doc(db, "accounts", phone), { coins: (current || 0) + amt });
       setAddCoinsVal("");
-      showToast("success", `${amt} coins added.`);
+      setAccountMsg(`Added ${amt} coins.`);
     } catch (e) {
-      console.error(e);
-      showToast("error", "Could not add coins: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
+      console.error("Add coins failed:", e);
+      setAccountMsg(`Couldn't add coins: ${e && e.message ? e.message : "unknown error"}`);
     }
+    setAccountBusy(false);
   }
 
   async function createPaymentCode() {
-    const amt = parseInt(payCoins, 10);
-    if (!payName.trim() || Number.isNaN(amt) || amt <= 0) {
-      showToast("error", "Enter a valid ID name and coin amount.");
-      return;
-    }
-    setBusy(true);
+    if (!payName.trim() || !payCoins) { setPayMsg("Enter both a name and a coin amount."); return; }
+    setPayBusy(true);
+    setPayMsg(null);
     try {
-      await setDoc(doc(db, "paymentCodes", payName.trim().toUpperCase()), { coins: amt, createdAt: Date.now() });
+      await setDoc(doc(db, "paymentCodes", payName.trim().toUpperCase()), { coins: parseInt(payCoins, 10), createdAt: Date.now() });
       setPayName(""); setPayCoins("");
-      showToast("success", "Payment ID created.");
+      setPayMsg("Payment ID created.");
     } catch (e) {
-      console.error(e);
-      showToast("error", "Could not create payment ID: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
+      console.error("Create payment code failed:", e);
+      setPayMsg(`Couldn't create it: ${e && e.message ? e.message : "unknown error"}`);
     }
+    setPayBusy(false);
   }
 
   async function saveSettings() {
-    setBusy(true);
+    setSettingsBusy(true);
+    setSettingsMsg(null);
     try {
       const ads = adsText.split("\n").map((s) => s.trim()).filter(Boolean);
       const rulesArr = rulesText.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -377,27 +366,24 @@ export default function OwnerApp() {
         setNewAdminKey("");
       }
       setSettingsMsg("Saved.");
-      showToast("success", "Settings saved.");
-      setTimeout(() => setSettingsMsg(null), 2000);
+      setTimeout(() => setSettingsMsg(null), 2500);
     } catch (e) {
-      console.error(e);
-      showToast("error", "Could not save settings: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
+      console.error("Save settings failed:", e);
+      setSettingsMsg(`Couldn't save: ${e && e.message ? e.message : "unknown error"}`);
     }
+    setSettingsBusy(false);
   }
 
   async function toggleAppStatus(on) {
-    setBusy(true);
+    setStatusBusy(true);
+    setStatusMsg(null);
     try {
       await setDoc(doc(db, "settings", "appStatus"), { on, reason: on ? "" : offReason.trim() });
-      showToast("success", `App turned ${on ? "ON" : "OFF"}.`);
     } catch (e) {
-      console.error(e);
-      showToast("error", "Could not update app status: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
+      console.error("Toggle app status failed:", e);
+      setStatusMsg(`Couldn't update: ${e && e.message ? e.message : "unknown error"}`);
     }
+    setStatusBusy(false);
   }
 
   const withdrawRequests = [];
@@ -408,42 +394,69 @@ export default function OwnerApp() {
   });
 
   async function resolveWithdraw(phone, idx, approve) {
-    setBusy(true);
+    const key = `${phone}-${idx}`;
+    setWithdrawBusy(key);
+    setWithdrawMsg(null);
     try {
       const acc = accounts.find((a) => a.phone === phone);
-      if (!acc) return;
+      if (!acc) throw new Error("Account not found");
       const history = [...(acc.withdrawHistory || [])];
       history[idx] = { ...history[idx], status: approve ? "Approved" : "Rejected" };
       await updateDoc(doc(db, "accounts", phone), { withdrawHistory: history });
-      showToast("success", approve ? "Withdrawal approved." : "Withdrawal rejected.");
     } catch (e) {
-      console.error(e);
-      showToast("error", "Could not update withdrawal: " + (e?.message || "unknown error"));
-    } finally {
-      setBusy(false);
+      console.error("Resolve withdraw failed:", e);
+      setWithdrawMsg(`Couldn't update: ${e && e.message ? e.message : "unknown error"}`);
     }
+    setWithdrawBusy(null);
+  }
+
+  // NEW: submit a match result (kills + coins won) for a registered player
+  async function submitResult(teamIdx, memberIdx, member) {
+    const key = `${resultsMatch.id}-${teamIdx}-${memberIdx}`;
+    const input = resultInputs[key] || {};
+    const killsVal = parseInt(input.kills, 10);
+    const coinsVal = parseInt(input.coins, 10);
+    if (isNaN(killsVal) || isNaN(coinsVal)) {
+      setResultMsg((m) => ({ ...m, [key]: "Enter both kills and coins." }));
+      return;
+    }
+    setResultBusy((b) => ({ ...b, [key]: true }));
+    setResultMsg((m) => ({ ...m, [key]: null }));
+    try {
+      const acc = accounts.find((a) => a.phone === member.phone);
+      if (!acc) throw new Error("Player account not found");
+      const entry = { matchId: resultsMatch.id, matchTitle: resultsMatch.title, kills: killsVal, coinsWon: coinsVal, date: new Date().toISOString() };
+      await updateDoc(doc(db, "accounts", member.phone), {
+        kills: (acc.kills || 0) + killsVal,
+        matchesPlayed: (acc.matchesPlayed || 0) + 1,
+        totalEarned: (acc.totalEarned || 0) + coinsVal,
+        coins: (acc.coins || 0) + coinsVal,
+        matchResults: [entry, ...(acc.matchResults || [])],
+      });
+
+      const teams = (joinedPlayersMap[resultsMatch.id] || []).map((t, ti) => {
+        if (ti !== teamIdx) return t;
+        return {
+          ...t,
+          members: (t.members || []).map((m, mi) =>
+            mi === memberIdx ? { ...m, resultSubmitted: true, kills: killsVal, coinsWon: coinsVal } : m
+          ),
+        };
+      });
+      await setDoc(doc(db, "joinedPlayers", String(resultsMatch.id)), { teams }, { merge: true });
+    } catch (e) {
+      console.error("Submit result failed:", e);
+      setResultMsg((m) => ({ ...m, [key]: `Couldn't save: ${e && e.message ? e.message : "unknown error"}` }));
+    }
+    setResultBusy((b) => ({ ...b, [key]: false }));
   }
 
   const filteredMatches = matches.filter((m) => m.type === matchType && m.mode === manageMode);
+  const selectedAccount = accounts.find((a) => a.phone === selectedPhone) || null;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#050408" }}>
       <div className="relative w-full overflow-hidden flex flex-col" style={{ maxWidth: 390, height: 780, background: C.bg, borderRadius: 32, border: `1px solid ${C.border}`, boxShadow: "0 30px 80px rgba(0,0,0,0.6)" }}>
-
-        {/* Global toast — shows success/error for every action so a click
-            never silently "does nothing" again. */}
-        {toast && (
-          <div
-            className="absolute top-3 left-3 right-3 z-50 rounded-xl px-4 py-3 text-xs font-bold text-center shadow-lg"
-            style={{
-              background: toast.type === "success" ? "#12332E" : "#3A1620",
-              color: toast.type === "success" ? C.teal : C.red,
-              border: `1px solid ${C.border}`,
-            }}
-          >
-            {toast.text}
-          </div>
-        )}
 
         {!booted && <Splash />}
         {booted && !authed && <AdminLogin onSubmit={handleLogin} error={authError} />}
@@ -465,7 +478,7 @@ export default function OwnerApp() {
                     <Power size={18} style={{ color: appStatus.on ? C.teal : C.red }} />
                     <span className="text-sm font-bold" style={{ color: appStatus.on ? C.teal : C.red }}>App is currently {appStatus.on ? "ON" : "OFF"}</span>
                   </div>
-                  <button type="button" onClick={() => { setMatchType("cs"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.violet}` }}>
+                  <button onClick={() => { setMatchType("cs"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.violet}` }}>
                     <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${C.violet}22` }}><Swords size={20} style={{ color: C.violet }} /></span>
                     <span className="flex-1 text-left">
                       <div className="text-[15px] font-bold" style={{ color: C.text }}>CS Matches</div>
@@ -473,7 +486,7 @@ export default function OwnerApp() {
                     </span>
                     <Pencil size={16} style={{ color: C.dim }} />
                   </button>
-                  <button type="button" onClick={() => { setMatchType("br"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.teal}` }}>
+                  <button onClick={() => { setMatchType("br"); setManageOpen(true); setManageMode(null); }} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface, borderLeft: `3px solid ${C.teal}` }}>
                     <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${C.teal}22` }}><Crosshair size={20} style={{ color: C.teal }} /></span>
                     <span className="flex-1 text-left">
                       <div className="text-[15px] font-bold" style={{ color: C.text }}>BR Matches</div>
@@ -492,7 +505,7 @@ export default function OwnerApp() {
                     { id: "duo", label: "Duo", sub: "2 players per team", icon: Users },
                     { id: "squad", label: "Squad", sub: "4 players per team", icon: Users },
                   ].map(({ id, label, sub, icon: Icon }) => (
-                    <button type="button" key={id} onClick={() => setManageMode(id)} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
+                    <button key={id} onClick={() => setManageMode(id)} className="w-full flex items-center gap-3.5 rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
                       <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: C.violetDim }}><Icon size={20} style={{ color: C.violet }} /></span>
                       <span className="flex-1 text-left">
                         <div className="text-[15px] font-bold" style={{ color: C.text }}>{label}</div>
@@ -507,11 +520,11 @@ export default function OwnerApp() {
               {tab === "home" && manageOpen && manageMode && !matchForm && (
                 <>
                   <Header title={`${matchType === "cs" ? "CS" : "BR"} · ${manageMode[0].toUpperCase() + manageMode.slice(1)}`} onBack={() => setManageMode(null)} right={
-                    <button type="button" onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: null })} className="p-2 rounded-full" style={{ background: C.violetDim }}><Plus size={16} style={{ color: C.violet }} /></button>
+                    <button onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: null })} className="p-2 rounded-full" style={{ background: C.violetDim }}><Plus size={16} style={{ color: C.violet }} /></button>
                   } />
                   {filteredMatches.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No matches yet — tap + to add one.</div>}
                   {filteredMatches.map((m) => (
-                    <button type="button" key={m.id} onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: m })} className="w-full text-left rounded-2xl p-3.5 mb-3 flex items-center justify-between" style={{ background: C.surface }}>
+                    <button key={m.id} onClick={() => setMatchForm({ type: matchType, mode: manageMode, editing: m })} className="w-full text-left rounded-2xl p-3.5 mb-3 flex items-center justify-between" style={{ background: C.surface }}>
                       <div>
                         <div className="text-sm font-bold" style={{ color: C.text }}>{m.title}</div>
                         <div className="text-xs" style={{ color: C.dim }}>{m.map} · {m.slots} slots · {new Date(m.startsAt).toLocaleString()}</div>
@@ -523,14 +536,15 @@ export default function OwnerApp() {
               )}
 
               {matchForm && (
-                <MatchForm type={matchForm.type} mode={matchForm.mode} editing={matchForm.editing} busy={busy} onCancel={() => setMatchForm(null)} onSave={saveMatch} onDelete={deleteMatch} />
+                <MatchForm type={matchForm.type} mode={matchForm.mode} editing={matchForm.editing} onCancel={() => setMatchForm(null)} onSave={saveMatch} onDelete={deleteMatch} />
               )}
 
               {tab === "accounts" && (
                 <>
                   <Header title="Accounts" />
+                  {accounts.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No accounts yet.</div>}
                   {accounts.map((acc) => (
-                    <button type="button" key={acc.phone} onClick={() => setSelectedAccountPhone(acc.phone)} className="w-full flex items-center justify-between rounded-2xl p-3.5 mb-3" style={{ background: C.surface }}>
+                    <button key={acc.phone} onClick={() => { setSelectedPhone(acc.phone); setAccountMsg(null); setAddCoinsVal(""); }} className="w-full flex items-center justify-between rounded-2xl p-3.5 mb-3" style={{ background: C.surface }}>
                       <div className="text-left">
                         <div className="text-sm font-bold" style={{ color: C.text }}>{acc.gameName} {acc.banned && <span style={{ color: C.red }}>(Banned)</span>}</div>
                         <div className="text-xs" style={{ color: C.dim }}>{acc.phone}</div>
@@ -547,7 +561,8 @@ export default function OwnerApp() {
                   <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface }}>
                     <Field label="Payment ID name" placeholder='e.g. "99989"' value={payName} onChange={(e) => setPayName(e.target.value)} />
                     <Field label="Coins for this ID" placeholder="e.g. 200" value={payCoins} onChange={(e) => setPayCoins(e.target.value)} inputMode="numeric" />
-                    <button type="button" disabled={busy} onClick={createPaymentCode} className="w-full rounded-xl py-3 font-bold text-sm disabled:opacity-50" style={{ background: C.violet, color: "#fff" }}>{busy ? "Creating…" : "Create"}</button>
+                    {payMsg && <div className="text-xs font-semibold mb-2" style={{ color: payMsg.startsWith("Couldn't") ? C.red : C.teal }}>{payMsg}</div>}
+                    <button disabled={payBusy} onClick={createPaymentCode} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.violet, color: "#fff", opacity: payBusy ? 0.6 : 1 }}>{payBusy ? "Creating…" : "Create"}</button>
                   </div>
                   <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.dim }}>Recent Payment IDs</div>
                   <div className="rounded-2xl overflow-hidden" style={{ background: C.surface }}>
@@ -565,17 +580,100 @@ export default function OwnerApp() {
               {tab === "withdrawals" && (
                 <>
                   <Header title="Withdrawal Requests" />
+                  {withdrawMsg && <div className="text-xs font-semibold mb-3" style={{ color: C.red }}>{withdrawMsg}</div>}
                   {withdrawRequests.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No pending requests.</div>}
-                  {withdrawRequests.map((w, i) => (
-                    <div key={i} className="rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
-                      <div className="text-sm font-bold mb-1" style={{ color: C.text }}>{w.gameName} · {w.phone}</div>
-                      <div className="text-xs mb-1" style={{ color: C.dim }}>Method: <span style={{ color: C.text }}>{w.method}</span></div>
-                      <div className="text-xs mb-1" style={{ color: C.dim }}>Account: <span style={{ color: C.text }}>{w.accountHolder} — {w.accountId}</span></div>
-                      <div className="text-sm font-bold mb-3" style={{ color: C.amber }}>{w.amount} coins</div>
-                      <div className="flex gap-2">
-                        <button type="button" disabled={busy} onClick={() => resolveWithdraw(w.phone, w.idx, false)} className="flex-1 rounded-xl py-2.5 font-bold text-xs disabled:opacity-50" style={{ background: "#3A1620", color: C.red }}>Reject</button>
-                        <button type="button" disabled={busy} onClick={() => resolveWithdraw(w.phone, w.idx, true)} className="flex-1 rounded-xl py-2.5 font-bold text-xs disabled:opacity-50" style={{ background: "#12332E", color: C.teal }}>Approve</button>
+                  {withdrawRequests.map((w, i) => {
+                    const key = `${w.phone}-${w.idx}`;
+                    const busy = withdrawBusy === key;
+                    return (
+                      <div key={i} className="rounded-2xl p-4 mb-3" style={{ background: C.surface }}>
+                        <div className="text-sm font-bold mb-1" style={{ color: C.text }}>{w.gameName} · {w.phone}</div>
+                        <div className="text-xs mb-1" style={{ color: C.dim }}>Method: <span style={{ color: C.text }}>{w.method}</span></div>
+                        <div className="text-xs mb-1" style={{ color: C.dim }}>Account: <span style={{ color: C.text }}>{w.accountHolder} — {w.accountId}</span></div>
+                        <div className="text-sm font-bold mb-3" style={{ color: C.amber }}>{w.amount} coins</div>
+                        <div className="flex gap-2">
+                          <button disabled={busy} onClick={() => resolveWithdraw(w.phone, w.idx, false)} className="flex-1 rounded-xl py-2.5 font-bold text-xs" style={{ background: "#3A1620", color: C.red, opacity: busy ? 0.6 : 1 }}>{busy ? "…" : "Reject"}</button>
+                          <button disabled={busy} onClick={() => resolveWithdraw(w.phone, w.idx, true)} className="flex-1 rounded-xl py-2.5 font-bold text-xs" style={{ background: "#12332E", color: C.teal, opacity: busy ? 0.6 : 1 }}>{busy ? "…" : "Approve"}</button>
+                        </div>
                       </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {tab === "results" && !resultsMatch && (
+                <>
+                  <Header title="Match Results" />
+                  <div className="text-xs mb-3" style={{ color: C.dim }}>Pick a match to enter kills and coins won for each player who joined.</div>
+                  {matches.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No matches created yet.</div>}
+                  {[...matches].sort((a, b) => b.startsAt - a.startsAt).map((m) => (
+                    <button key={m.id} onClick={() => setResultsMatch(m)} className="w-full text-left rounded-2xl p-3.5 mb-3 flex items-center justify-between" style={{ background: C.surface }}>
+                      <div>
+                        <div className="text-sm font-bold" style={{ color: C.text }}>{m.title}</div>
+                        <div className="text-xs" style={{ color: C.dim }}>{m.type === "cs" ? "CS" : "BR"} · {m.mode} · {new Date(m.startsAt).toLocaleString()}</div>
+                      </div>
+                      <ChevronRight size={16} style={{ color: C.dim }} />
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {tab === "results" && resultsMatch && (
+                <>
+                  <Header title={resultsMatch.title} onBack={() => setResultsMatch(null)} />
+                  {(joinedPlayersMap[resultsMatch.id] || []).length === 0 && (
+                    <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No one joined this match yet.</div>
+                  )}
+                  {(joinedPlayersMap[resultsMatch.id] || []).map((team, teamIdx) => (
+                    <div key={teamIdx} className="mb-4">
+                      {resultsMatch.mode !== "solo" && <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: C.violet }}>Team {teamIdx + 1}</div>}
+                      {(team.members || []).map((member, memberIdx) => {
+                        if (!member.phone) {
+                          return (
+                            <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
+                              <div className="text-sm font-bold" style={{ color: C.text }}>{member.gameName}</div>
+                              <div className="text-xs mt-1" style={{ color: C.dim }}>Teammate — no linked account, results can't be recorded for them.</div>
+                            </div>
+                          );
+                        }
+                        const key = `${resultsMatch.id}-${teamIdx}-${memberIdx}`;
+                        if (member.resultSubmitted) {
+                          return (
+                            <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
+                              <div className="text-sm font-bold mb-1" style={{ color: C.text }}>{member.gameName}</div>
+                              <div className="text-xs" style={{ color: C.teal }}>Result saved: {member.kills} kills · {member.coinsWon} coins</div>
+                            </div>
+                          );
+                        }
+                        const busy = resultBusy[key];
+                        const msg = resultMsg[key];
+                        const inputVal = resultInputs[key] || { kills: "", coins: "" };
+                        return (
+                          <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
+                            <div className="text-sm font-bold mb-2" style={{ color: C.text }}>{member.gameName}</div>
+                            <div className="flex gap-2 mb-2">
+                              <input
+                                value={inputVal.kills}
+                                onChange={(e) => setResultInputs((s) => ({ ...s, [key]: { ...inputVal, kills: e.target.value } }))}
+                                placeholder="Kills"
+                                inputMode="numeric"
+                                className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+                                style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}
+                              />
+                              <input
+                                value={inputVal.coins}
+                                onChange={(e) => setResultInputs((s) => ({ ...s, [key]: { ...inputVal, coins: e.target.value } }))}
+                                placeholder="Coins won"
+                                inputMode="numeric"
+                                className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+                                style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}
+                              />
+                            </div>
+                            {msg && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{msg}</div>}
+                            <button disabled={busy} onClick={() => submitResult(teamIdx, memberIdx, member)} className="w-full rounded-xl py-2.5 font-bold text-xs" style={{ background: C.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save Result"}</button>
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </>
@@ -587,19 +685,20 @@ export default function OwnerApp() {
                   <div className="rounded-2xl p-4 mb-4" style={{ background: appStatus.on ? "#12332E" : "#3A1620" }}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-bold" style={{ color: appStatus.on ? C.teal : C.red }}>App is {appStatus.on ? "ON" : "OFF"}</span>
-                      <button type="button" disabled={busy} onClick={() => toggleAppStatus(!appStatus.on)} className="px-4 py-2 rounded-full text-xs font-bold disabled:opacity-50" style={{ background: appStatus.on ? C.red : C.teal, color: "#000" }}>{busy ? "…" : appStatus.on ? "Turn OFF" : "Turn ON"}</button>
+                      <button disabled={statusBusy} onClick={() => toggleAppStatus(!appStatus.on)} className="px-4 py-2 rounded-full text-xs font-bold" style={{ background: appStatus.on ? C.red : C.teal, color: "#000", opacity: statusBusy ? 0.6 : 1 }}>{statusBusy ? "…" : (appStatus.on ? "Turn OFF" : "Turn ON")}</button>
                     </div>
                     {!appStatus.on && (
                       <Field placeholder="Reason players will see" value={offReason} onChange={(e) => setOffReason(e.target.value)} />
                     )}
+                    {statusMsg && <div className="text-xs font-semibold" style={{ color: C.red }}>{statusMsg}</div>}
                   </div>
 
                   <div className="rounded-2xl p-4 mb-4" style={{ background: C.surface }}>
                     <TextArea label="Home banners (one per line)" rows={3} placeholder={adminContent.ads.join("\n")} value={adsText} onChange={(e) => setAdsText(e.target.value)} />
                     <TextArea label="Tournament rules (one per line)" rows={5} placeholder={adminContent.rules.join("\n")} value={rulesText} onChange={(e) => setRulesText(e.target.value)} />
                     <Field icon={KeyRound} label="Change Admin Key (leave blank to keep current)" placeholder="New admin key" value={newAdminKey} onChange={(e) => setNewAdminKey(e.target.value)} />
-                    {settingsMsg && <div className="text-xs font-semibold mb-2" style={{ color: C.teal }}>{settingsMsg}</div>}
-                    <button type="button" disabled={busy} onClick={saveSettings} className="w-full rounded-xl py-3 font-bold text-sm disabled:opacity-50" style={{ background: C.amber, color: "#1a1400" }}>{busy ? "Saving…" : "Save Settings"}</button>
+                    {settingsMsg && <div className="text-xs font-semibold mb-2" style={{ color: settingsMsg.startsWith("Couldn't") ? C.red : C.teal }}>{settingsMsg}</div>}
+                    <button disabled={settingsBusy} onClick={saveSettings} className="w-full rounded-xl py-3 font-bold text-sm" style={{ background: C.amber, color: "#1a1400", opacity: settingsBusy ? 0.6 : 1 }}>{settingsBusy ? "Saving…" : "Save Settings"}</button>
                   </div>
                 </>
               )}
@@ -609,7 +708,7 @@ export default function OwnerApp() {
                   <div className="w-full rounded-t-3xl p-5" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-lg font-black" style={{ color: C.text }}>{selectedAccount.gameName}</span>
-                      <button type="button" onClick={() => setSelectedAccountPhone(null)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
+                      <button onClick={() => setSelectedPhone(null)} className="p-1.5 rounded-full" style={{ background: C.surfaceAlt }}><X size={15} style={{ color: C.dim }} /></button>
                     </div>
                     <div className="grid grid-cols-3 gap-2 mb-4">
                       <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
@@ -621,21 +720,22 @@ export default function OwnerApp() {
                         <div className="text-[10px] uppercase" style={{ color: C.dim }}>Kills</div>
                       </div>
                       <div className="rounded-xl p-3 text-center" style={{ background: C.surfaceAlt }}>
-                        <div className="text-base font-bold" style={{ color: C.text }}>{(selectedAccount.joinedMatchIds || []).length}</div>
+                        <div className="text-base font-bold" style={{ color: C.text }}>{selectedAccount.matchesPlayed ?? 0}</div>
                         <div className="text-[10px] uppercase" style={{ color: C.dim }}>Matches</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-xs mb-4" style={{ color: C.dim }}>
                       <Phone size={13} /> {selectedAccount.phone}
                     </div>
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
                       <input value={addCoinsVal} onChange={(e) => setAddCoinsVal(e.target.value)} placeholder="Coins to add" inputMode="numeric" className="flex-1 rounded-xl px-3.5 py-3 text-sm outline-none" style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }} />
-                      <button type="button" disabled={busy} onClick={() => addCoinsToAccount(selectedAccount.phone, selectedAccount.coins)} className="px-4 py-3 rounded-xl font-bold text-xs disabled:opacity-50" style={{ background: C.teal, color: "#04241C" }}>{busy ? "…" : "Add"}</button>
+                      <button disabled={accountBusy} onClick={() => addCoinsToAccount(selectedAccount.phone, selectedAccount.coins)} className="px-4 py-3 rounded-xl font-bold text-xs" style={{ background: C.teal, color: "#04241C", opacity: accountBusy ? 0.6 : 1 }}>{accountBusy ? "…" : "Add"}</button>
                     </div>
-                    <button type="button" disabled={busy} onClick={() => removeProfile(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm mb-2 disabled:opacity-50" style={{ background: C.surfaceAlt, color: C.text }}>
+                    {accountMsg && <div className="text-xs font-semibold mb-3" style={{ color: accountMsg.startsWith("Couldn't") ? C.red : C.teal }}>{accountMsg}</div>}
+                    <button disabled={accountBusy} onClick={() => removeProfile(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm mb-2" style={{ background: C.surfaceAlt, color: C.text, opacity: accountBusy ? 0.6 : 1 }}>
                       <UserX size={16} /> Remove profile from app
                     </button>
-                    <button type="button" disabled={busy} onClick={() => banAccount(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm disabled:opacity-50" style={{ background: "#3A1620", color: C.red }}>
+                    <button disabled={accountBusy} onClick={() => banAccount(selectedAccount.phone)} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm" style={{ background: "#3A1620", color: C.red, opacity: accountBusy ? 0.6 : 1 }}>
                       <Ban size={16} /> Ban this account
                     </button>
                   </div>
@@ -650,9 +750,10 @@ export default function OwnerApp() {
                 { id: "accounts", label: "Accounts", icon: Users2 },
                 { id: "payments", label: "Payment ID", icon: Wallet2 },
                 { id: "withdrawals", label: "Withdrawals", icon: ArrowUpFromLine },
+                { id: "results", label: "Results", icon: Target },
                 { id: "settings", label: "Settings", icon: SettingsIcon },
               ].map(({ id, label, icon: Icon }) => (
-                <button type="button" key={id} onClick={() => goToTab(id)} className="flex flex-col items-center gap-1">
+                <button key={id} onClick={() => { setTab(id); setManageOpen(false); setManageMode(null); setMatchForm(null); setResultsMatch(null); }} className="flex flex-col items-center gap-1">
                   <Icon size={16} style={{ color: tab === id ? C.violet : C.dim }} />
                   <span className="text-[9px] font-semibold" style={{ color: tab === id ? C.violet : C.dim }}>{label}</span>
                 </button>
@@ -663,4 +764,4 @@ export default function OwnerApp() {
       </div>
     </div>
   );
-}
+          }
