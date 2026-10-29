@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import {
-  Flame, KeyRound, ChevronLeft, ChevronRight, X, Plus, Trash2,
+  Flame, KeyRound, ChevronLeft, ChevronRight, X, Plus,
   Swords, Crosshair, Pencil, Users2, Wallet2, Settings as SettingsIcon,
-  ArrowUpFromLine, Ban, UserX, Coins, Phone, Power, User, Users, Target,
+  ArrowUpFromLine, Ban, UserX, Phone, Power, User, Users, Target,
 } from "lucide-react";
 import { db } from "./firebase";
 import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection,
+  doc, setDoc, updateDoc, deleteDoc, onSnapshot, collection,
 } from "firebase/firestore";
 
 const C = {
@@ -95,7 +95,7 @@ function AdminLogin({ onSubmit, error }) {
   );
 }
 
-function MatchForm({ type, mode, editing, onCancel, onSave, onDelete }) {
+function MatchForm({ type, mode, editing, onCancel, onSave, onDelete, onResults }) {
   const [title, setTitle] = useState(editing?.title || "");
   const [mapName, setMapName] = useState(editing?.map || "");
   const [slots, setSlots] = useState(editing?.slots?.toString() || "");
@@ -183,7 +183,12 @@ function MatchForm({ type, mode, editing, onCancel, onSave, onDelete }) {
 
       <button disabled={busy} onClick={submit} className="w-full rounded-xl py-3 font-bold text-sm mb-2" style={{ background: C.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : (editing ? "Save Changes" : "Create Match")}</button>
       {editing && (
-        <button disabled={busy} onClick={handleDelete} className="w-full rounded-xl py-3 font-bold text-sm mb-6" style={{ background: "#3A1620", color: C.red, opacity: busy ? 0.6 : 1 }}>{busy ? "Deleting…" : "Delete Match"}</button>
+        <button disabled={busy} onClick={handleDelete} className="w-full rounded-xl py-3 font-bold text-sm mb-2" style={{ background: "#3A1620", color: C.red, opacity: busy ? 0.6 : 1 }}>{busy ? "Deleting…" : "Delete Match"}</button>
+      )}
+      {editing && (
+        <button disabled={busy} onClick={onResults} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm mb-6" style={{ background: "#12332E", color: C.teal }}>
+          <Target size={16} /> Enter Match Results
+        </button>
       )}
     </div>
   );
@@ -228,7 +233,6 @@ export default function OwnerApp() {
   const [settingsMsg, setSettingsMsg] = useState(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
 
-  // NEW: results tab state
   const [resultsMatch, setResultsMatch] = useState(null);
   const [resultInputs, setResultInputs] = useState({});
   const [resultBusy, setResultBusy] = useState({});
@@ -410,36 +414,41 @@ export default function OwnerApp() {
     setWithdrawBusy(null);
   }
 
-  // NEW: submit a match result (kills + coins won) for a registered player
+  // Save a result for ANY player in the match (linked account optional)
   async function submitResult(teamIdx, memberIdx, member) {
     const key = `${resultsMatch.id}-${teamIdx}-${memberIdx}`;
     const input = resultInputs[key] || {};
     const killsVal = parseInt(input.kills, 10);
     const coinsVal = parseInt(input.coins, 10);
     if (isNaN(killsVal) || isNaN(coinsVal)) {
-      setResultMsg((m) => ({ ...m, [key]: "Enter both kills and coins." }));
+      setResultMsg((m) => ({ ...m, [key]: "Enter both kills and coins (0 is fine)." }));
       return;
     }
+    const linkedPhone = (member.phone || input.phone || "").trim();
     setResultBusy((b) => ({ ...b, [key]: true }));
     setResultMsg((m) => ({ ...m, [key]: null }));
     try {
-      const acc = accounts.find((a) => a.phone === member.phone);
-      if (!acc) throw new Error("Player account not found");
-      const entry = { matchId: resultsMatch.id, matchTitle: resultsMatch.title, kills: killsVal, coinsWon: coinsVal, date: new Date().toISOString() };
-      await updateDoc(doc(db, "accounts", member.phone), {
-        kills: (acc.kills || 0) + killsVal,
-        matchesPlayed: (acc.matchesPlayed || 0) + 1,
-        totalEarned: (acc.totalEarned || 0) + coinsVal,
-        coins: (acc.coins || 0) + coinsVal,
-        matchResults: [entry, ...(acc.matchResults || [])],
-      });
+      if (linkedPhone) {
+        const acc = accounts.find((a) => a.phone === linkedPhone);
+        if (!acc) throw new Error("No player account found with that phone number");
+        const entry = { matchId: resultsMatch.id, matchTitle: resultsMatch.title, kills: killsVal, coinsWon: coinsVal, date: new Date().toISOString() };
+        await updateDoc(doc(db, "accounts", linkedPhone), {
+          kills: (acc.kills || 0) + killsVal,
+          matchesPlayed: (acc.matchesPlayed || 0) + 1,
+          totalEarned: (acc.totalEarned || 0) + coinsVal,
+          coins: (acc.coins || 0) + coinsVal,
+          matchResults: [entry, ...(acc.matchResults || [])],
+        });
+      }
 
       const teams = (joinedPlayersMap[resultsMatch.id] || []).map((t, ti) => {
         if (ti !== teamIdx) return t;
         return {
           ...t,
           members: (t.members || []).map((m, mi) =>
-            mi === memberIdx ? { ...m, resultSubmitted: true, kills: killsVal, coinsWon: coinsVal } : m
+            mi === memberIdx
+              ? { ...m, ...(linkedPhone ? { phone: linkedPhone } : {}), resultSubmitted: true, kills: killsVal, coinsWon: coinsVal }
+              : m
           ),
         };
       });
@@ -536,7 +545,92 @@ export default function OwnerApp() {
               )}
 
               {matchForm && (
-                <MatchForm type={matchForm.type} mode={matchForm.mode} editing={matchForm.editing} onCancel={() => setMatchForm(null)} onSave={saveMatch} onDelete={deleteMatch} />
+                <MatchForm
+                  type={matchForm.type}
+                  mode={matchForm.mode}
+                  editing={matchForm.editing}
+                  onCancel={() => setMatchForm(null)}
+                  onSave={saveMatch}
+                  onDelete={deleteMatch}
+                  onResults={() => { setResultsMatch(matchForm.editing); setMatchForm(null); }}
+                />
+              )}
+
+              {resultsMatch && (
+                <div className="absolute inset-0 z-30 flex flex-col overflow-y-auto p-5" style={{ background: C.bg }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setResultsMatch(null)} className="p-1.5 -ml-1.5 rounded-full" style={{ background: C.surface }}><ChevronLeft size={16} style={{ color: C.dim }} /></button>
+                      <span className="text-lg font-black" style={{ color: C.text }}>{resultsMatch.title}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs mb-4" style={{ color: C.dim }}>Match Results · enter kills and coins won for each player</div>
+
+                  {(joinedPlayersMap[resultsMatch.id] || []).length === 0 && (
+                    <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No one joined this match yet.</div>
+                  )}
+
+                  {(joinedPlayersMap[resultsMatch.id] || []).map((team, teamIdx) => (
+                    <div key={teamIdx} className="mb-4">
+                      {resultsMatch.mode !== "solo" && <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: C.violet }}>Team {teamIdx + 1}</div>}
+                      {(team.members || []).map((member, memberIdx) => {
+                        const key = `${resultsMatch.id}-${teamIdx}-${memberIdx}`;
+                        if (member.resultSubmitted) {
+                          return (
+                            <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-bold" style={{ color: C.text }}>{member.gameName}</span>
+                                <span className="text-xs" style={{ color: C.dim }}>UID: {member.uid}</span>
+                              </div>
+                              <div className="text-xs mt-1" style={{ color: C.teal }}>Result saved: {member.kills} kills · {member.coinsWon} coins{member.phone ? "" : " (no linked account)"}</div>
+                            </div>
+                          );
+                        }
+                        const busy = resultBusy[key];
+                        const msg = resultMsg[key];
+                        const inputVal = resultInputs[key] || { kills: "", coins: "", phone: "" };
+                        return (
+                          <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-bold" style={{ color: C.text }}>{member.gameName}</span>
+                              <span className="text-xs" style={{ color: C.dim }}>UID: {member.uid}</span>
+                            </div>
+                            <div className="flex gap-2 mb-2">
+                              <input
+                                value={inputVal.kills}
+                                onChange={(e) => setResultInputs((s) => ({ ...s, [key]: { ...inputVal, kills: e.target.value } }))}
+                                placeholder="Kills"
+                                inputMode="numeric"
+                                className="w-1/2 min-w-0 rounded-xl px-3 py-2.5 text-sm outline-none"
+                                style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}
+                              />
+                              <input
+                                value={inputVal.coins}
+                                onChange={(e) => setResultInputs((s) => ({ ...s, [key]: { ...inputVal, coins: e.target.value } }))}
+                                placeholder="Coins won"
+                                inputMode="numeric"
+                                className="w-1/2 min-w-0 rounded-xl px-3 py-2.5 text-sm outline-none"
+                                style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}
+                              />
+                            </div>
+                            {!member.phone && (
+                              <input
+                                value={inputVal.phone || ""}
+                                onChange={(e) => setResultInputs((s) => ({ ...s, [key]: { ...inputVal, phone: e.target.value } }))}
+                                placeholder="Player account phone (optional — to add coins to account)"
+                                inputMode="numeric"
+                                className="w-full rounded-xl px-3 py-2.5 text-xs outline-none mb-2"
+                                style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}
+                              />
+                            )}
+                            {msg && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{msg}</div>}
+                            <button disabled={busy} onClick={() => submitResult(teamIdx, memberIdx, member)} className="w-full rounded-xl py-2.5 font-bold text-xs" style={{ background: C.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save Result"}</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
               )}
 
               {tab === "accounts" && (
@@ -598,84 +692,6 @@ export default function OwnerApp() {
                       </div>
                     );
                   })}
-                </>
-              )}
-
-              {tab === "results" && !resultsMatch && (
-                <>
-                  <Header title="Match Results" />
-                  <div className="text-xs mb-3" style={{ color: C.dim }}>Pick a match to enter kills and coins won for each player who joined.</div>
-                  {matches.length === 0 && <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No matches created yet.</div>}
-                  {[...matches].sort((a, b) => b.startsAt - a.startsAt).map((m) => (
-                    <button key={m.id} onClick={() => setResultsMatch(m)} className="w-full text-left rounded-2xl p-3.5 mb-3 flex items-center justify-between" style={{ background: C.surface }}>
-                      <div>
-                        <div className="text-sm font-bold" style={{ color: C.text }}>{m.title}</div>
-                        <div className="text-xs" style={{ color: C.dim }}>{m.type === "cs" ? "CS" : "BR"} · {m.mode} · {new Date(m.startsAt).toLocaleString()}</div>
-                      </div>
-                      <ChevronRight size={16} style={{ color: C.dim }} />
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {tab === "results" && resultsMatch && (
-                <>
-                  <Header title={resultsMatch.title} onBack={() => setResultsMatch(null)} />
-                  {(joinedPlayersMap[resultsMatch.id] || []).length === 0 && (
-                    <div className="text-sm text-center mt-8" style={{ color: C.dim }}>No one joined this match yet.</div>
-                  )}
-                  {(joinedPlayersMap[resultsMatch.id] || []).map((team, teamIdx) => (
-                    <div key={teamIdx} className="mb-4">
-                      {resultsMatch.mode !== "solo" && <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: C.violet }}>Team {teamIdx + 1}</div>}
-                      {(team.members || []).map((member, memberIdx) => {
-                        if (!member.phone) {
-                          return (
-                            <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
-                              <div className="text-sm font-bold" style={{ color: C.text }}>{member.gameName}</div>
-                              <div className="text-xs mt-1" style={{ color: C.dim }}>Teammate — no linked account, results can't be recorded for them.</div>
-                            </div>
-                          );
-                        }
-                        const key = `${resultsMatch.id}-${teamIdx}-${memberIdx}`;
-                        if (member.resultSubmitted) {
-                          return (
-                            <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
-                              <div className="text-sm font-bold mb-1" style={{ color: C.text }}>{member.gameName}</div>
-                              <div className="text-xs" style={{ color: C.teal }}>Result saved: {member.kills} kills · {member.coinsWon} coins</div>
-                            </div>
-                          );
-                        }
-                        const busy = resultBusy[key];
-                        const msg = resultMsg[key];
-                        const inputVal = resultInputs[key] || { kills: "", coins: "" };
-                        return (
-                          <div key={memberIdx} className="rounded-2xl p-3.5 mb-2" style={{ background: C.surface }}>
-                            <div className="text-sm font-bold mb-2" style={{ color: C.text }}>{member.gameName}</div>
-                            <div className="flex gap-2 mb-2">
-                              <input
-                                value={inputVal.kills}
-                                onChange={(e) => setResultInputs((s) => ({ ...s, [key]: { ...inputVal, kills: e.target.value } }))}
-                                placeholder="Kills"
-                                inputMode="numeric"
-                                className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
-                                style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}
-                              />
-                              <input
-                                value={inputVal.coins}
-                                onChange={(e) => setResultInputs((s) => ({ ...s, [key]: { ...inputVal, coins: e.target.value } }))}
-                                placeholder="Coins won"
-                                inputMode="numeric"
-                                className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
-                                style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` }}
-                              />
-                            </div>
-                            {msg && <div className="text-xs font-semibold mb-2" style={{ color: C.red }}>{msg}</div>}
-                            <button disabled={busy} onClick={() => submitResult(teamIdx, memberIdx, member)} className="w-full rounded-xl py-2.5 font-bold text-xs" style={{ background: C.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save Result"}</button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
                 </>
               )}
 
@@ -750,7 +766,6 @@ export default function OwnerApp() {
                 { id: "accounts", label: "Accounts", icon: Users2 },
                 { id: "payments", label: "Payment ID", icon: Wallet2 },
                 { id: "withdrawals", label: "Withdrawals", icon: ArrowUpFromLine },
-                { id: "results", label: "Results", icon: Target },
                 { id: "settings", label: "Settings", icon: SettingsIcon },
               ].map(({ id, label, icon: Icon }) => (
                 <button key={id} onClick={() => { setTab(id); setManageOpen(false); setManageMode(null); setMatchForm(null); setResultsMatch(null); }} className="flex flex-col items-center gap-1">
@@ -764,4 +779,4 @@ export default function OwnerApp() {
       </div>
     </div>
   );
-}
+    } 
